@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="tuxpulse"
-VERSION="0.8"
+VERSION="1.0"
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$ROOT_DIR/packaging/deb"
 DIST_DIR="$ROOT_DIR/dist"
