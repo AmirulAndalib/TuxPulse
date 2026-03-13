@@ -17,7 +17,7 @@
 
 # TuxPulse
 
-DebCare is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
+TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 
 ## Main features
 - System update
