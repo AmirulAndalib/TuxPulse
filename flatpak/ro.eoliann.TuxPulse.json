@@ -1,0 +1,34 @@
+{
+  "app-id": "ro.eoliann.TuxPulse",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.6",
+  "sdk": "org.kde.Sdk",
+  "command": "tuxpulse",
+
+  "finish-args": [
+    "--share=network",
+    "--share=ipc",
+    "--socket=x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--filesystem=home"
+  ],
+
+  "modules": [
+    {
+      "name": "tuxpulse",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/share/tuxpulse",
+        "cp -r app /app/share/tuxpulse/",
+        "install -Dm755 flatpak/tuxpulse.sh /app/bin/tuxpulse"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".."
+        }
+      ]
+    }
+  ]
+}

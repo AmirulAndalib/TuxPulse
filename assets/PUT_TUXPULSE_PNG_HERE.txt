@@ -1,0 +1,10 @@
+Place your custom icon as:
+
+assets/tuxpulse.png
+
+Then run:
+
+./build_deb.sh
+
+The build script copies it into:
+packaging/deb/usr/share/icons/hicolor/256x256/apps/tuxpulse.png

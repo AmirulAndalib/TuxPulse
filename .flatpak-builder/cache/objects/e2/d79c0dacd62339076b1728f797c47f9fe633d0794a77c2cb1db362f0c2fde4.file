@@ -1,0 +1,35 @@
+{
+  "id" : "ro.eoliann.TuxPulse",
+  "runtime" : "org.kde.Platform",
+  "runtime-version" : "6.6",
+  "runtime-commit" : "38e2ef7ce675c3b315857e2dc5de524e2c826e85f434760d8b5761333d9d86bf",
+  "sdk" : "org.kde.Sdk",
+  "sdk-commit" : "142fa360457b8442a560460997a23fcd6799cd1e437871d3b1b0d0767e48c8e6",
+  "command" : "tuxpulse",
+  "modules" : [
+    {
+      "name" : "tuxpulse",
+      "buildsystem" : "simple",
+      "sources" : [
+        {
+          "path" : "..",
+          "type" : "dir"
+        }
+      ],
+      "build-commands" : [
+        "mkdir -p /app/share/tuxpulse",
+        "cp -r app /app/share/tuxpulse/",
+        "install -Dm755 flatpak/tuxpulse.sh /app/bin/tuxpulse"
+      ]
+    }
+  ],
+  "finish-args" : [
+    "--share=network",
+    "--share=ipc",
+    "--socket=x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--filesystem=home"
+  ],
+  "source-date-epoch" : 1773403713
+}

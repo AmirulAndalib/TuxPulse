@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -e
+export PYTHONPATH="/usr/share/tuxpulse/app"
+exec python3 /usr/share/tuxpulse/app/main.py
