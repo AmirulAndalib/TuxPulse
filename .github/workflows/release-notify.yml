@@ -8,66 +8,64 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
-
     env:
       TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       TG_CHATS: ${{ secrets.TG_CHATS }}
-      RELEASE_NAME: ${{ github.event.release.name || github.event.repository.name }}
-      RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-      RELEASE_URL: ${{ github.event.release.html_url || format('{0}/{1}/releases/latest', github.server_url, github.repository) }}
+      RELEASE_NAME: ${{ github.event.release.name || github.repository }}
+      RELEASE_TAG:  ${{ github.event.release.tag_name || github.ref_name }}
+      RELEASE_URL:  ${{ github.event.release.html_url || format('{0}/{1}/releases', github.server_url, github.repository) }}
 
     steps:
-      - name: Send Telegram notifications
-        env:
-          ASSET_URL1: ${{ github.event.release.assets && github.event.release.assets[0] && github.event.release.assets[0].browser_download_url || '' }}
-          ASSET_URL2: ${{ github.event.release.assets && github.event.release.assets[1] && github.event.release.assets[1].browser_download_url || '' }}
+      - name: Build release message
+        id: build
         run: |
-          # Construim textul cu newline-uri reale (Telegram HTML nu acceptă <br>)
-          TEXT="$(printf '%s\n' \
-            '📢 <b>TuxPulse are o nouă versiune pe GitHub!</b>' \
-            "<b>${RELEASE_NAME}</b> (tag: <code>${RELEASE_TAG}</code>)" \
-            "" \
-            "👉 Un set de instrumente rapid pentru Linux, scris în Python, care include comenzi de administrare utile și ajustări pentru optimizarea și curățarea sistemului." \
-            "Cod gratuit și curat, fără spyware, malware sau reclame." \
-            "" \
-            "👉 <a href=\"${RELEASE_URL}\">Mergi la pagina noii versiuni</a>" \
-          )"
-          
-          # Adăugăm link-urile de descărcare doar dacă există
-          if [ -n "$ASSET_URL1" ]; then
-            TEXT+=$'\n'"⬇️ <a href=\"${ASSET_URL1}\">Descarcă fișierul de instalare</a>"
-          fi
-          
-          if [ -n "$ASSET_URL2" ]; then
-            TEXT+=$'\n'"⬇️ <a href=\"${ASSET_URL2}\">Descarcă fișierul portabil</a>"
+          esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+          SAFE_NAME=$(printf '%s' "${RELEASE_NAME}" | esc)
+          SAFE_TAG=$(printf '%s' "${RELEASE_TAG}" | esc)
+
+          TEXT="📢 <b>Nou release pe GitHub!</b>\n\n<b>${SAFE_NAME}</b> (tag: <code>${SAFE_TAG}</code>)\n👉 <a href='${RELEASE_URL}'>Pagina release</a>"
+
+          # adaugă assete dacă există
+          echo '${{ toJson(github.event.release.assets) }}' > assets.json
+          if [[ -s assets.json && $(jq length assets.json) -gt 0 ]]; then
+            jq -r '.[].browser_download_url' assets.json | while read -r URL; do
+              NAME=$(basename "$URL" | esc)
+              TEXT="$TEXT\n⬇️ <a href='$URL'>$NAME</a>"
+            done
           fi
 
-          IFS=',' read -r -a CHAT_ARRAY <<< "${TG_CHATS}"
+          # scriem safe pentru GitHub Outputs
+          TEXT_ESCAPED="${TEXT//'%'/'%25'}"
+          TEXT_ESCAPED="${TEXT_ESCAPED//$'\n'/'%0A'}"
+          TEXT_ESCAPED="${TEXT_ESCAPED//$'\r'/'%0D'}"
 
-          echo "TG_CHATS raw: >${TG_CHATS}<"
+          echo "msg=$TEXT_ESCAPED" >> $GITHUB_OUTPUT
 
-          for ITEM in "${CHAT_ARRAY[@]}"; do
+      - name: Send Telegram notifications
+        run: |
+          TEXT="${{ steps.build.outputs.msg }}"
+
+          IFS=',' read -r -a CHATS <<< "${TG_CHATS}"
+          for ITEM in "${CHATS[@]}"; do
             ITEM_TRIM=$(echo "$ITEM" | xargs)
-            [ -z "$ITEM_TRIM" ] && continue
+            [[ -z "$ITEM_TRIM" ]] && continue
 
             if [[ "$ITEM_TRIM" == *":"* ]]; then
               CHAT_ID="${ITEM_TRIM%%:*}"
               THREAD_ID="${ITEM_TRIM##*:}"
-              curl -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+              echo ">>> Trimit catre $CHAT_ID in topic $THREAD_ID"
+              curl -s "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
                 -d chat_id="${CHAT_ID}" \
                 -d message_thread_id="${THREAD_ID}" \
                 -d parse_mode="HTML" \
                 --data-urlencode "text=${TEXT}"
             else
               CHAT_ID="$ITEM_TRIM"
-              curl -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+              echo ">>> Trimit catre grup simplu $CHAT_ID"
+              curl -s "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
                 -d chat_id="${CHAT_ID}" \
                 -d parse_mode="HTML" \
                 --data-urlencode "text=${TEXT}"
             fi
           done
-
-
-
-
-
