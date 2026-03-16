@@ -33,7 +33,7 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 
 ## Dependencies
 ```bash
-sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1
+sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1 | policykid
 ```
 
 ## Run from source
