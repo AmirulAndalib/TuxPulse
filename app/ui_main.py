@@ -1,7 +1,8 @@
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
-    QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget, QTabWidget, QSplitter
+    QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget, QTabWidget, QSplitter,
+    QProgressBar
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -15,6 +16,7 @@ from services.kernels import get_kernel_report, removal_commands_for_suggested
 from services.monitor import MonitorService
 from services.scheduler import install_schedule, remove_schedule, get_current_schedule
 from services.systeminfo import build_system_summary
+from services.system_maintenance import run_full_maintenance
 
 
 def _get_distribution():
@@ -26,6 +28,24 @@ def _get_distribution():
     except Exception:
         pass
     return platform.system()
+
+
+class MaintenanceWorker(QThread):
+    log_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int)
+    error_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+
+    def run(self):
+        try:
+            run_full_maintenance(
+                self.log_signal.emit,
+                self.progress_signal.emit
+            )
+        except Exception as e:
+            self.error_signal.emit(str(e))
+        finally:
+            self.finished_signal.emit()
 
 
 class LiveChart(FigureCanvas):
@@ -112,6 +132,8 @@ class MainWindow(QMainWindow):
         self.actions = build_actions()
         self.runner = CommandRunner(self.append_log)
         self.monitor = MonitorService(history=40)
+        self.worker = None
+        self.maintenance_had_error = False
 
         self.setWindowTitle(self.i18n.t("app_title"))
         self.resize(1320, 820)
@@ -160,6 +182,17 @@ class MainWindow(QMainWindow):
         self.refresh_btn = QPushButton()
         self.refresh_btn.clicked.connect(self.refresh_all)
 
+        self.btn_full_maintenance = QPushButton()
+        self.btn_full_maintenance.clicked.connect(self.start_full_maintenance)
+
+        self.maintenance_progress = QProgressBar()
+        self.maintenance_progress.setObjectName("MaintenanceProgress")
+        self.maintenance_progress.setMinimum(0)
+        self.maintenance_progress.setMaximum(100)
+        self.maintenance_progress.setValue(0)
+        self.maintenance_progress.setTextVisible(True)
+        self.maintenance_progress.setFormat("%p%")
+
         sidebar_layout.addWidget(self.title_label)
         sidebar_layout.addWidget(self.subtitle_label)
         sidebar_layout.addWidget(self.distribution_label)
@@ -168,6 +201,8 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.action_list, 1)
         sidebar_layout.addWidget(self.run_btn)
         sidebar_layout.addWidget(self.refresh_btn)
+        sidebar_layout.addWidget(self.btn_full_maintenance)
+        sidebar_layout.addWidget(self.maintenance_progress)
 
         # Right panel
         self.panel = QFrame()
@@ -410,6 +445,18 @@ class MainWindow(QMainWindow):
             QPushButton:hover {
                 background: #1d4ed8;
             }
+            QProgressBar#MaintenanceProgress {
+                background: #0b1220;
+                border: 1px solid #243041;
+                border-radius: 10px;
+                min-height: 22px;
+                text-align: center;
+                color: #e5e7eb;
+            }
+            QProgressBar#MaintenanceProgress::chunk {
+                background: #22c55e;
+                border-radius: 8px;
+            }
         """)
 
     def change_language(self):
@@ -429,6 +476,12 @@ class MainWindow(QMainWindow):
         self.actions_label.setText(self.i18n.t("system_actions"))
         self.run_btn.setText(self.i18n.t("run_action"))
         self.refresh_btn.setText(self.i18n.t("refresh"))
+
+        if self.i18n.lang == "ro":
+            self.btn_full_maintenance.setText("Mentenanță completă")
+        else:
+            self.btn_full_maintenance.setText("Full Maintenance")
+
         self.info_title.setText(self.i18n.t("system_info"))
         self.log_title.setText(self.i18n.t("execution_log"))
         self.disk_partition_title.setText(self.i18n.t("disk_partition_usage"))
@@ -451,6 +504,7 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(1, self.i18n.t("disk_analysis"))
         self.tabs.setTabText(2, self.i18n.t("kernel_tools"))
         self.tabs.setTabText(3, self.i18n.t("scheduler"))
+
         current_schedule = get_current_schedule()
         if current_schedule:
             self.scheduler_info.setPlainText(
@@ -510,7 +564,11 @@ class MainWindow(QMainWindow):
 
     def refresh_disk_analysis(self):
         usage = get_root_usage()
-        self.disk_pie.update_usage(usage["used_gb"], usage["free_gb"], self.i18n.t("disk_partition_usage"))
+        self.disk_pie.update_usage(
+            usage["used_gb"],
+            usage["free_gb"],
+            self.i18n.t("disk_partition_usage")
+        )
         dirs = get_home_top_directories()
         labels = [d["name"] for d in dirs] if dirs else ["N/A"]
         values = [d["size_mb"] for d in dirs] if dirs else [0]
@@ -533,6 +591,7 @@ class MainWindow(QMainWindow):
         if not commands:
             QMessageBox.information(self, "Info", self.i18n.t("no_old_kernels"))
             return
+
         answer = QMessageBox.question(
             self,
             "Confirm",
@@ -541,6 +600,7 @@ class MainWindow(QMainWindow):
         )
         if answer != QMessageBox.Yes:
             return
+
         self.append_log("\n=== Kernel cleanup ===")
         code = self.runner.run(commands, requires_root=True)
         if code != 0:
@@ -564,3 +624,37 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Info", self.i18n.t("schedule_removed"))
         else:
             QMessageBox.critical(self, "Error", self.i18n.t("schedule_failed"))
+
+    def start_full_maintenance(self):
+        if self.worker is not None and self.worker.isRunning():
+            return
+
+        self.maintenance_had_error = False
+        self.maintenance_progress.setValue(0)
+        self.btn_full_maintenance.setEnabled(False)
+        self.append_log("\n=== Full system maintenance ===")
+
+        self.worker = MaintenanceWorker()
+        self.worker.log_signal.connect(self.append_log)
+        self.worker.progress_signal.connect(self.update_maintenance_progress)
+        self.worker.error_signal.connect(self.on_maintenance_error)
+        self.worker.finished_signal.connect(self.maintenance_finished)
+        self.worker.start()
+
+    def update_maintenance_progress(self, value):
+        self.maintenance_progress.setValue(value)
+
+    def on_maintenance_error(self, message):
+        self.maintenance_had_error = True
+        self.append_log(f"Error: {message}")
+        QMessageBox.critical(self, "Error", message)
+
+    def maintenance_finished(self):
+        if not self.maintenance_had_error:
+            self.append_log("Maintenance finished.")
+            self.maintenance_progress.setValue(100)
+        else:
+            self.append_log("Maintenance ended with errors.")
+
+        self.btn_full_maintenance.setEnabled(True)
+        self.refresh_all()
