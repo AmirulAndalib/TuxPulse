@@ -31,6 +31,17 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 - task scheduler based on user crontab
 - bilingual interface: English / Romanian
 
+## UI
+- Dashboard
+- Maintenance
+- Disk
+- Kernel
+- Cleaner
+- Startup
+- Services
+- Packages
+- Scheduler
+
 ## Dependencies
 ```bash
 sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1 | policykid
@@ -49,8 +60,12 @@ chmod +x build_deb.sh
 
 ## Notes
 - Administrative actions use `pkexec`.
-- Scheduled tasks use the current user's `crontab`.
+- Scheduled tasks use the current user's `crontab` and writes a per-user crontab entry..
 - Kernel cleanup removes only the packages suggested by the built-in analyzer. Review them before deletion.
+- Full Maintenance uses a single `pkexec` session, so the admin password should be requested once.
+- Startup and Services tabs are read-only in this preview.
+- Cleaner can wipe user cache targets directly and root targets through pkexec.
+
 
 
 ## Custom icon

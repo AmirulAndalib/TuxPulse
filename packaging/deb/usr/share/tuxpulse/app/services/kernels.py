@@ -1,32 +1,61 @@
+import os
 import platform
+import re
+import shutil
 import subprocess
 
-def _run_shell(cmd):
+
+_VERSION_RE = re.compile(r'^(linux-image|kernel-default)-(.+)$')
+
+
+def _run_output(command):
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
-        return r.stdout.strip()
+        return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
     except Exception:
-        return ""
+        return ''
+
 
 def get_kernel_report():
     current = platform.release()
-    raw = _run_shell("dpkg --list | grep '^ii' | grep 'linux-image' | awk '{print $2}'")
-    installed = [line.strip() for line in raw.splitlines() if line.strip()]
-
+    installed = []
     suggested = []
-    for pkg in installed:
-        if current not in pkg and "generic" in pkg:
-            suggested.append(pkg)
+
+    if shutil.which('dpkg'):
+        output = _run_output(['dpkg-query', '-W', '-f=${Package}\n'])
+        for line in output.splitlines():
+            if line.startswith('linux-image-'):
+                installed.append(line.replace('linux-image-', ''))
+    elif shutil.which('rpm'):
+        output = _run_output(['rpm', '-qa'])
+        for line in output.splitlines():
+            if 'kernel' in line:
+                installed.append(line)
+
+    if not installed:
+        installed = [current]
+
+    for item in installed:
+        if current not in item:
+            suggested.append(item)
 
     return {
-        "current": current,
-        "installed": installed,
-        "suggested": suggested,
+        'current': current,
+        'installed': installed,
+        'suggested': suggested,
     }
+
 
 def removal_commands_for_suggested():
     report = get_kernel_report()
-    if not report["suggested"]:
-        return []
-    pkgs = " ".join(report["suggested"])
-    return [f"apt remove -y {pkgs}", "apt autoremove -y"]
+    cmds = []
+    if shutil.which('apt'):
+        for kernel in report['suggested']:
+            pkg = kernel if kernel.startswith('linux-image-') else f'linux-image-{kernel}'
+            cmds.append(['apt', 'purge', '-y', pkg])
+    elif shutil.which('dnf'):
+        for kernel in report['suggested']:
+            cmds.append(['dnf', 'remove', '-y', kernel])
+    elif shutil.which('zypper'):
+        for kernel in report['suggested']:
+            cmds.append(['zypper', '--non-interactive', 'remove', kernel])
+    return cmds

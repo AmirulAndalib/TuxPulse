@@ -1,5 +1,7 @@
-import psutil
 from collections import deque
+
+import psutil
+
 
 class MonitorService:
     def __init__(self, history=40):
@@ -10,27 +12,17 @@ class MonitorService:
         self._last_net = psutil.net_io_counters()
 
     def snapshot(self):
-        cpu = psutil.cpu_percent(interval=None)
-        ram = psutil.virtual_memory().percent
-        disk = psutil.disk_usage("/").percent
-
+        self.cpu_history.append(psutil.cpu_percent(interval=None))
+        self.ram_history.append(psutil.virtual_memory().percent)
+        self.disk_history.append(psutil.disk_usage('/').percent)
         current_net = psutil.net_io_counters()
-        total_bytes = (current_net.bytes_recv - self._last_net.bytes_recv) + (current_net.bytes_sent - self._last_net.bytes_sent)
-        total_kb = total_bytes / 1024.0
+        delta = (current_net.bytes_sent + current_net.bytes_recv) - (self._last_net.bytes_sent + self._last_net.bytes_recv)
         self._last_net = current_net
-
-        self.cpu_history.append(cpu)
-        self.ram_history.append(ram)
-        self.disk_history.append(disk)
-        self.net_history.append(total_kb)
-
+        mbps = max(0.0, delta / (1024 * 1024))
+        self.net_history.append(mbps)
         return {
-            "cpu": cpu,
-            "ram": ram,
-            "disk": disk,
-            "net_kb": total_kb,
-            "cpu_history": list(self.cpu_history),
-            "ram_history": list(self.ram_history),
-            "disk_history": list(self.disk_history),
-            "net_history": list(self.net_history),
+            'cpu_history': list(self.cpu_history),
+            'ram_history': list(self.ram_history),
+            'disk_history': list(self.disk_history),
+            'net_history': list(self.net_history),
         }

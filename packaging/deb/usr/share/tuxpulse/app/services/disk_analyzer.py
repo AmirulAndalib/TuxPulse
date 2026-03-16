@@ -1,39 +1,56 @@
 import os
 import shutil
-import subprocess
+from pathlib import Path
+
 
 def get_root_usage():
-    total, used, free = shutil.disk_usage("/")
-    gb = 1024 ** 3
+    usage = shutil.disk_usage('/')
+    used_gb = usage.used / (1024 ** 3)
+    free_gb = usage.free / (1024 ** 3)
+    total_gb = usage.total / (1024 ** 3)
     return {
-        "total_gb": round(total / gb, 2),
-        "used_gb": round(used / gb, 2),
-        "free_gb": round(free / gb, 2),
-        "used_percent": round((used / total) * 100, 1) if total else 0.0,
+        'used_gb': used_gb,
+        'free_gb': free_gb,
+        'total_gb': total_gb,
     }
 
-def get_home_top_directories(limit=8):
-    home = os.path.expanduser("~")
-    cmd = f'du -x -d 1 "{home}" 2>/dev/null | sort -hr | head -n {limit + 1}'
-    try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
-        lines = [line.strip() for line in r.stdout.splitlines() if line.strip()]
-    except Exception:
-        return []
 
-    result = []
-    for line in lines:
-        parts = line.split("\t", 1)
-        if len(parts) != 2:
+def _dir_size_mb(path: Path) -> float:
+    total = 0
+    try:
+        for root, _, files in os.walk(path, onerror=lambda _e: None):
+            for name in files:
+                try:
+                    total += (Path(root) / name).stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        return 0.0
+    return total / (1024 ** 2)
+
+
+def get_home_top_directories(limit=8):
+    home = Path.home()
+    items = []
+    for entry in home.iterdir():
+        if not entry.is_dir():
             continue
-        size_k = parts[0]
-        path = parts[1]
-        if path == home:
-            continue
-        name = os.path.basename(path) or path
-        try:
-            size_mb = round(int(size_k) / 1024.0, 1)
-        except ValueError:
-            continue
-        result.append({"name": name, "size_mb": size_mb})
-    return result[:limit]
+        size_mb = _dir_size_mb(entry)
+        items.append({'name': entry.name, 'size_mb': round(size_mb, 1)})
+    items.sort(key=lambda x: x['size_mb'], reverse=True)
+    return items[:limit]
+
+
+def get_home_largest_files(limit=20):
+    home = Path.home()
+    files = []
+    for root, _, filenames in os.walk(home, onerror=lambda _e: None):
+        for name in filenames:
+            path = Path(root) / name
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            files.append({'path': str(path), 'size_mb': round(size / (1024 ** 2), 2)})
+    files.sort(key=lambda x: x['size_mb'], reverse=True)
+    return files[:limit]

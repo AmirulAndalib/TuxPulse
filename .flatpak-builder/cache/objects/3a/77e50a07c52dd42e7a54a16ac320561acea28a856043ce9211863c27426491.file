@@ -1,0 +1,32 @@
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QComboBox, QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+
+
+class StartupTab(QWidget):
+    enabled_changed = pyqtSignal(str, bool)
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        self.title = QLabel('Startup Applications')
+        self.title.setObjectName('SectionTitle')
+        self.hint = QLabel('Change only user entries from the preview build.')
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(['Name', 'Exec', 'Enabled', 'Scope'])
+        self.table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.title)
+        layout.addWidget(self.hint)
+        layout.addWidget(self.table)
+
+    def populate(self, rows):
+        self.table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            self.table.setItem(r, 0, QTableWidgetItem(row['name']))
+            self.table.setItem(r, 1, QTableWidgetItem(row['exec']))
+            combo = QComboBox()
+            combo.addItems(['Yes', 'No'])
+            combo.setCurrentText('Yes' if row['enabled'] else 'No')
+            combo.currentTextChanged.connect(lambda value, path=row['path']: self.enabled_changed.emit(path, value == 'Yes'))
+            self.table.setCellWidget(r, 2, combo)
+            self.table.setItem(r, 3, QTableWidgetItem(row['scope']))
+        self.table.resizeColumnsToContents()

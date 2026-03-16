@@ -1,30 +1,31 @@
 import subprocess
 
+
 class CommandRunner:
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self, log_callback):
+        self.log_callback = log_callback
 
     def run(self, commands, requires_root=True):
-        if not commands:
-            self.logger("[INFO] No commands to execute.")
-            return 0
-
-        script = "set -e\n" + "\n".join(commands) + "\n"
-        cmd = ["pkexec", "bash", "-lc", script] if requires_root else ["bash", "-lc", script]
-
-        self.logger("$ " + " ".join(cmd))
-        try:
+        last_code = 0
+        for cmd in commands:
+            if isinstance(cmd, str):
+                command = cmd.split()
+            else:
+                command = list(cmd)
+            if requires_root and command and command[0] != 'pkexec':
+                command = ['pkexec'] + command
+            self.log_callback('>>> ' + ' '.join(command))
             process = subprocess.Popen(
-                cmd,
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                bufsize=1,
             )
-        except Exception as exc:
-            self.logger(f"[ERROR] {exc}")
-            return 1
-
-        if process.stdout is not None:
-            for line in process.stdout:
-                self.logger(line.rstrip())
-        return process.wait()
+            if process.stdout is not None:
+                for line in process.stdout:
+                    self.log_callback(line.rstrip())
+            last_code = process.wait()
+            if last_code != 0:
+                return last_code
+        return last_code
