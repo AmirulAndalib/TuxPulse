@@ -1,5 +1,7 @@
 import subprocess
 
+from core.privilege import elevated_command
+
 
 class CommandRunner:
     def __init__(self, log_callback):
@@ -12,8 +14,14 @@ class CommandRunner:
                 command = cmd.split()
             else:
                 command = list(cmd)
-            if requires_root and command and command[0] != 'pkexec':
-                command = ['pkexec'] + command
+
+            try:
+                if requires_root:
+                    command = elevated_command(command)
+            except RuntimeError as exc:
+                self.log_callback(str(exc))
+                return 127
+
             self.log_callback('>>> ' + ' '.join(command))
             process = subprocess.Popen(
                 command,

@@ -1,0 +1,18 @@
+pkgname=tuxpulse
+pkgver=2.0
+pkgrel=1
+pkgdesc="Multi-distro Linux maintenance and installer toolkit"
+arch=('any')
+url="https://github.com/eoliann/TuxPulse"
+license=('MIT')
+depends=('python' 'python-pyqt5' 'python-psutil' 'python-matplotlib' 'polkit')
+optdepends=('flatpak: Flatpak app installation support')
+source=()
+package() {
+  install -d "$pkgdir/usr/share/tuxpulse"
+  cp -r app "$pkgdir/usr/share/tuxpulse/"
+  cp -r helper "$pkgdir/usr/share/tuxpulse/"
+  install -Dm755 packaging/deb/usr/bin/tuxpulse "$pkgdir/usr/bin/tuxpulse"
+  install -Dm644 packaging/systemd/tuxpulse-helper.service "$pkgdir/usr/lib/systemd/system/tuxpulse-helper.service"
+  install -Dm644 packaging/polkit/com.tuxpulse.policy "$pkgdir/usr/share/polkit-1/actions/com.tuxpulse.policy"
+}

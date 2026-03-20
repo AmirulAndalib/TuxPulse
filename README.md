@@ -48,7 +48,7 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 <img width="1920" height="1040" alt="services-en" src="https://github.com/user-attachments/assets/0e61fcc1-d648-49fe-8d0a-a4f64717f25d" />
 - Packages
 <img width="1920" height="1040" alt="packeges-en" src="https://github.com/user-attachments/assets/c7afb136-9bb3-4656-83ec-a3eebceeb05a" />
-- Scheduler
+- Installer
 <img width="1920" height="1040" alt="scheduler-en" src="https://github.com/user-attachments/assets/465590a5-4157-4bcd-8219-62f5c78ef0b1" />
 Language: [En]/[Ro]
 <img width="1460" height="912" alt="switching-language" src="https://github.com/user-attachments/assets/3f5de768-2961-46e1-b519-1e3f811c98c0" />
@@ -60,7 +60,15 @@ sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policyk
 ```
 Arch
 ```bash
-sudo pacman -S python python-pyqt5 python-psutil python-matplotlib polkit
+sudo pacman -S python python-pyqt5 python-psutil python-matplotlib polkit flatpak
+```
+Fedora
+```bash
+sudo dnf install python3 python3-qt5 python3-psutil python3-matplotlib python3-matplotlib-qt5 polkit flatpak
+```
+openSUSE
+```bash
+sudo zypper install python3 python3-qt5 python3-psutil python3-matplotlib polkit flatpak
 ```
 
 ## Run from source

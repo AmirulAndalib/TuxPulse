@@ -1,3 +1,68 @@
-build-dir
-flatpak
-.flatpak-builder
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual environments (dacă vei folosi)
+venv/
+.env/
+.venv/
+
+# =========================
+# Build / distribuție
+# =========================
+build/
+dist/
+*.egg-info/
+
+# Folderul tău de build
+build-dir/
+
+# Debian package output (dacă generezi .deb)
+*.deb
+
+# =========================
+# Flatpak
+# =========================
+.flatpak-builder/
+.cache/
+
+# repo local flatpak (artefact generat)
+repo/
+
+# =========================
+# Sistem / IDE
+# =========================
+.DS_Store
+Thumbs.db
+
+# VS Code / JetBrains (optional)
+.vscode/
+.idea/
+
+# =========================
+# GitHub / CI (opțional)
+# =========================
+.github/workflows/*.log
+
+# =========================
+# Logs / temporare
+# =========================
+*.tmp
+*.bak
+*.swp
+
+# =========================
+# Executabile generate
+# =========================
+*.AppImage
+
+# =========================
+# Alte excluderi utile
+# =========================
+*.tar.gz
+*.zip
