@@ -31,27 +31,133 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 - task scheduler based on user crontab
 - bilingual interface: English / Romanian
 
+🚀 New Features
+
 ## UI
-- Dashboard
-<img width="1920" height="1040" alt="dashboard-en" src="https://github.com/user-attachments/assets/e46be026-ed5b-42d6-a042-9eba7f14688c" />
-- Maintenance
-<img width="1680" height="1050" alt="maintenance-en" src="https://github.com/user-attachments/assets/6c5a50dd-3853-4234-9c0c-bf6f2e3029ab" />
-- Disk
-<img width="1920" height="1040" alt="disk-en" src="https://github.com/user-attachments/assets/93d889c4-a295-4b87-ba0d-c79b311217de" />
-- Kernel
-<img width="1920" height="1040" alt="kernel-en" src="https://github.com/user-attachments/assets/96b6d8aa-904a-4955-889e-69b47689e55a" />
-- Cleaner
-<img width="1920" height="1040" alt="cleaner-en" src="https://github.com/user-attachments/assets/c77c2f9c-6cd2-4f66-a3b4-958b99c3fd5d" />
-- Startup
-<img width="1920" height="1040" alt="startup-en" src="https://github.com/user-attachments/assets/cafa3d53-2648-4fa8-92ca-7aaa807593d3" />
-- Services
-<img width="1920" height="1040" alt="services-en" src="https://github.com/user-attachments/assets/0e61fcc1-d648-49fe-8d0a-a4f64717f25d" />
-- Packages
-<img width="1920" height="1040" alt="packeges-en" src="https://github.com/user-attachments/assets/c7afb136-9bb3-4656-83ec-a3eebceeb05a" />
-- Installer
-<img width="1920" height="1040" alt="scheduler-en" src="https://github.com/user-attachments/assets/465590a5-4157-4bcd-8219-62f5c78ef0b1" />
+### Dashboard
+<img width="1920" height="1040" alt="1" src="https://github.com/user-attachments/assets/02de4d0e-fee8-4827-b9a6-e1eb3a1c9cf4" />
+
+### Maintenance
+<img width="1920" height="1040" alt="2" src="https://github.com/user-attachments/assets/66880bfd-4f69-4306-a358-881b193c8fe6" />
+<img width="1920" height="1040" alt="2 1" src="https://github.com/user-attachments/assets/3a1453cb-3606-47be-be3a-3e738e3ede90" />
+<img width="1920" height="1040" alt="2 2" src="https://github.com/user-attachments/assets/ff51afe6-b38d-473b-b042-a1374d0c07a0" />
+
+### Disk
+<img width="1920" height="1040" alt="3" src="https://github.com/user-attachments/assets/ebd3c3b4-c758-4dc6-b566-07df2b68fdab" />
+
+### Kernel
+<img width="1920" height="1040" alt="4" src="https://github.com/user-attachments/assets/bb2fa5fe-1858-432b-bb4d-e2590e381f05" />
+
+### Cleaner
+<img width="1920" height="1040" alt="5 0" src="https://github.com/user-attachments/assets/65636407-4fe4-450b-be74-22adab9fb60d" />
+<img width="1920" height="1040" alt="5 1" src="https://github.com/user-attachments/assets/3ae21d62-e3d0-4912-97c8-e2563595dbe3" />
+<img width="1920" height="1040" alt="5 2" src="https://github.com/user-attachments/assets/4cb0d6e8-5181-4649-8710-ea7dd3f797a1" />
+<img width="1920" height="1040" alt="5 3" src="https://github.com/user-attachments/assets/38e42a8f-da3a-4473-8c8b-edb34abc84a3" />
+<img width="1920" height="1040" alt="5 4" src="https://github.com/user-attachments/assets/782ea3aa-ebde-47f5-b99d-22f0582ef097" />
+
+🧹 Improved Cleaner\
+
+🔧 Unified Action System\
+✔ Main button logically renamed: Run action\
+✔ Functions integrated into the list:\
+✔ Remove orphan packages\
+✔ Vacuum journal (7 days)\
+
+🧠 Smart Cleanup (cross-distro)\
+✔ Debian/Ubuntu → apt autoremove\
+✔ Arch → orphan package detection\
+✔ Fedora → dnf autoremove\
+✔ openSUSE → zypper clean deps\
+
+### Startup
+<img width="1920" height="1040" alt="6" src="https://github.com/user-attachments/assets/6eb508fc-dec1-4d56-9bcc-1945bd03f4a9" />
+
+### Services
+<img width="1920" height="1040" alt="7" src="https://github.com/user-attachments/assets/6eb3c8b7-212a-43d4-bad9-4278562804c6" />
+
+### Packages
+<img width="1920" height="1040" alt="8" src="https://github.com/user-attachments/assets/b7002b69-2eba-4861-aebe-74a16fca6468" />
+
+### Installer
+<img width="1920" height="1040" alt="9" src="https://github.com/user-attachments/assets/29292129-3cd0-40ab-9db7-928364ffe2eb" />
+<img width="1460" height="912" alt="9 1" src="https://github.com/user-attachments/assets/3f76d23f-636f-49ee-a747-60d4121cc1cd" />
+<img width="1460" height="912" alt="9 2" src="https://github.com/user-attachments/assets/44d1884a-633f-483c-ab2d-212a3f465016" />
+
+🛒 Fully integrated App Store\
+Install apps by category (Browsers, Development, Multimedia, System Tools)\
+Dual support:\
+✔ Native packages (apt, pacman, dnf, zypper)\
+✔ Flatpak (automatic fallback)\
+✔ Live app search\
+✔ Multiple installation (bulk install)\
+
+🔄 Application Management\
+✔ Install applications\
+✔ Remove applications\
+✔ Update individual applications\
+✔ Bulk update\
+✔ Detection of already installed applications\
+
+🎯 Smart Source Selection\
+✔ Automatic deactivation of “Native” if the application does not exist in the repository\
+✔ Smart fallback to Flatpak\
+✔ Avoid installation errors\
+
+🔁 Auto Refresh UI\
+Automatic refresh after:\
+✔ install\
+✔ remove\
+✔ update\
+Eliminates the need to restart the application\
+Accurate real-time visual status\
+
+🎨 Improved UI\
+✔ Checkboxes visible in dark mode (white / light green)\
+✔ Clearer interface for application selection\
+✔ Dedicated buttons per application\
+
 Language: [En]/[Ro]
 <img width="1460" height="912" alt="switching-language" src="https://github.com/user-attachments/assets/3f5de768-2961-46e1-b519-1e3f811c98c0" />
+
+🔐 Enterprise Architecture
+
+🧱 Root Helper Service\
+✔ Complete UI/root separation\
+✔ Command execution via secure daemon\
+✔ Removal of pkexec dependency\
+
+🛡️ Security Hardening\
+✔ Strict command validation\
+✔ Controlled execution via package manager\
+✔ Protection against unauthorized execution\
+
+📜 Audit Logging\
+Complete log:\
+✔ user\
+✔ executed command\
+✔ output\
+Location: /var/log/tuxpulse.log\
+
+⚙️ Cross-Distro Compatibility\
+Full support for:\
+✔ Debian / Ubuntu\
+✔ Arch Linux\
+✔ Fedora\
+✔ openSUSE\
+
+🧪 Improvements\
+✔ Improved overall stability\
+✔ Complete removal of scheduler (unstable across distros)\
+✔ Reduced command execution errors\
+✔ Better integration with Flatpak\
+
+🐞 Bug Fixes\
+✔ Fixed scheduler import crash\
+✔ Fixed pkexec incompatibility with VSCode / container\
+✔ Fixed Installer UI (incorrect button states)\
+✔ Fixed invalid source selection\
+✔ Fixed refresh after installation/uninstallation\
+✔ Fixed dark mode checkbox visibility\
 
 ## Dependencies
 Debian/Ubuntu
