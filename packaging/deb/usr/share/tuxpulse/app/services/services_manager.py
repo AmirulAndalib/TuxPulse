@@ -1,6 +1,8 @@
 import shutil
 import subprocess
 
+from core.privilege import elevated_command
+
 
 STATE_RUNNING = 'Running'
 STATE_STOPPED = 'Stopped'
@@ -68,23 +70,27 @@ def set_service_state(service_name: str, desired_state: str):
 
     if desired_state == STATE_RUNNING:
         commands = [
-            ['pkexec', 'systemctl', 'enable', service_name],
-            ['pkexec', 'systemctl', 'start', service_name],
+            ['systemctl', 'enable', service_name],
+            ['systemctl', 'start', service_name],
         ]
     elif desired_state == STATE_STOPPED:
         commands = [
-            ['pkexec', 'systemctl', 'stop', service_name],
+            ['systemctl', 'stop', service_name],
         ]
     elif desired_state == STATE_DISABLED:
         commands = [
-            ['pkexec', 'systemctl', 'stop', service_name],
-            ['pkexec', 'systemctl', 'disable', service_name],
+            ['systemctl', 'stop', service_name],
+            ['systemctl', 'disable', service_name],
         ]
     else:
         raise RuntimeError(f'Unsupported service state: {desired_state}')
 
     for cmd in commands:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            elevated = elevated_command(cmd)
+        except RuntimeError as exc:
+            raise RuntimeError(str(exc)) from exc
+        result = subprocess.run(elevated, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if result.returncode != 0:
-            raise RuntimeError(result.stdout.strip() or f'Failed to run: {" ".join(cmd)}')
+            raise RuntimeError(result.stdout.strip() or f'Failed to run: {" ".join(elevated)}')
     return True
