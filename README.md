@@ -54,13 +54,23 @@ Language: [En]/[Ro]
 <img width="1460" height="912" alt="switching-language" src="https://github.com/user-attachments/assets/3f5de768-2961-46e1-b519-1e3f811c98c0" />
 
 ## Dependencies
+Debian/Ubuntu
 ```bash
 sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1 | policykid
 ```
+Arch
+```bash
+sudo pacman -S python python-pyqt5 python-psutil python-matplotlib polkit
+```
 
 ## Run from source
+Debian/Ubuntu
 ```bash
 python3 app/main.py
+```
+Arch
+```bash
+python app/main.py
 ```
 
 ## Build .deb
