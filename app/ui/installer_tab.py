@@ -13,15 +13,23 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+# CARD_COLOR_MAP = {
+#     "green": "#163d2b",
+#     "blue": "#10304d",
+#     "orange": "#4a3200",
+#     "purple": "#2f1d46",
+#     "white": "#111827",
+#     "red": "#3a1212",
+# }
+
 CARD_COLOR_MAP = {
-    "green": "#163d2b",
+    "green": "#1f7a5c",   # verde mai deschis
     "blue": "#10304d",
-    "orange": "#4a3200",
+    "orange": "#7a4b00",  # portocaliu mai vizibil
     "purple": "#2f1d46",
     "white": "#111827",
     "red": "#3a1212",
 }
-
 
 class SelectButton(QPushButton):
     toggled_state = pyqtSignal(bool)
@@ -29,7 +37,8 @@ class SelectButton(QPushButton):
     def __init__(self):
         super().__init__("✓")
         self.setCheckable(True)
-        self.setFixedSize(26, 26)
+        # self.setFixedSize(26, 26)
+        self.setFixedSize(24, 24)
         self.setCursor(Qt.PointingHandCursor)
         self.toggled.connect(self._emit_and_refresh)
         self._refresh_style()
@@ -38,34 +47,66 @@ class SelectButton(QPushButton):
         self._refresh_style()
         self.toggled_state.emit(checked)
 
+    # def _refresh_style(self):
+    #     if self.isChecked():
+    #         self.setStyleSheet("""
+    #             QPushButton {
+    #                 background: #22c55e;
+    #                 color: white;
+    #                 border: 2px solid #ffffff;
+    #                 border-radius: 8px;
+    #                 font-size: 16px;
+    #                 font-weight: bold;
+    #             }
+    #             QPushButton:hover {
+    #                 background: #16a34a;
+    #             }
+    #         """)
+    #     else:
+    #         self.setStyleSheet("""
+    #             QPushButton {
+    #                 background: #ffffff;
+    #                 color: transparent;
+    #                 border: 2px solid #cbd5e1;
+    #                 border-radius: 8px;
+    #                 font-size: 16px;
+    #                 font-weight: bold;
+    #             }
+    #             QPushButton:hover {
+    #                 border: 2px solid #93c5fd;
+    #                 background: #f8fafc;
+    #             }
+    #         """)
+
     def _refresh_style(self):
         if self.isChecked():
             self.setStyleSheet("""
                 QPushButton {
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
                     background: #22c55e;
                     color: white;
                     border: 2px solid #ffffff;
-                    border-radius: 8px;
-                    font-size: 16px;
+                    border-radius: 6px;
+                    font-size: 14px;
                     font-weight: bold;
-                }
-                QPushButton:hover {
-                    background: #16a34a;
+                    padding: 0px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 QPushButton {
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
                     background: #ffffff;
                     color: transparent;
                     border: 2px solid #cbd5e1;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    border: 2px solid #93c5fd;
-                    background: #f8fafc;
+                    border-radius: 6px;
+                    padding: 0px;
                 }
             """)
 
@@ -193,14 +234,23 @@ class InstallerCard(QFrame):
         status_text = self._status_text()
         badge = ui.get("badge", "")
 
-        pill_bg = {
-            "green": "#14532d",
-            "blue": "#1d4ed8",
-            "orange": "#92400e",
-            "purple": "#6d28d9",
-            "white": "#334155",
-            "red": "#b91c1c",
-        }.get(color_name, "#334155")
+        # pill_bg = {
+        #     "green": "#14532d",
+        #     "blue": "#1d4ed8",
+        #     "orange": "#92400e",
+        #     "purple": "#6d28d9",
+        #     "white": "#334155",
+        #     "red": "#b91c1c",
+        # }.get(color_name, "#334155")
+
+        if color_name == "white":
+            pill_bg = "#1f2937"  # neutru pentru instalate
+        else:
+            pill_bg = {
+                "green": "#166534",
+                "orange": "#a16207",
+                "red": "#b91c1c",
+            }.get(color_name, "#334155")
 
         self.status_label.setText(f"{badge} {status_text}".strip())
         self.status_label.setStyleSheet(f"""

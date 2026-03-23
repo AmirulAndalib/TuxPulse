@@ -172,6 +172,12 @@ class I18N:
             "service_changing": "Changing service {name} to {state}...",
             "maintenance_finished_success_status": "Maintenance finished successfully.",
             "maintenance_finished_error_status": "Maintenance finished with errors.",
+            "maintenance_update": "Updating package lists",
+            "maintenance_upgrade": "Upgrading system",
+            "maintenance_autopurge": "Removing old packages (autopurge)",
+            "maintenance_autoremove": "Removing orphan dependencies",
+            "maintenance_autoclean": "Cleaning package cache",
+            "maintenance_flatpak": "Updating Flatpak packages"
         },
         "ro": {
             "app_title": "TuxPulse",
@@ -345,6 +351,12 @@ class I18N:
             "service_changing": "Se schimbă serviciul {name} la starea {state}...",
             "maintenance_finished_success_status": "Mentenanța s-a încheiat cu succes.",
             "maintenance_finished_error_status": "Mentenanța s-a încheiat cu erori.",
+            "maintenance_update": "Actualizare listă pachete",
+            "maintenance_upgrade": "Actualizare sistem",
+            "maintenance_autopurge": "Eliminare pachete vechi (autopurge)",
+            "maintenance_autoremove": "Eliminare dependențe nefolosite",
+            "maintenance_autoclean": "Curățare cache pachete",
+            "maintenance_flatpak": "Actualizare aplicații Flatpak"
         },
     }
 

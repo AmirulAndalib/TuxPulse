@@ -17,6 +17,9 @@ from PyQt5.QtWidgets import (
 )
 import platform
 
+from PyQt5.QtCore import QTimer
+import threading
+
 from core.commands import build_actions
 from core.i18n import I18N
 from core.runner import CommandRunner
