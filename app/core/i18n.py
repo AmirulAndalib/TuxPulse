@@ -42,6 +42,16 @@ class I18N:
             "installer_installed_flatpak": "Installed (Flatpak)",
             "installer_available": "Available",
             "installer_not_available": "not available",
+            "installer_update_available": "Update available",
+            "installer_available_flatpak": "Available via Flatpak",
+            "installer_unavailable": "Unavailable",
+            "installer_repo_missing": "External repo missing",
+            "installer_stats_total": "Total",
+            "installer_stats_installed": "Installed",
+            "installer_stats_not_installed": "Not installed",
+            "installer_stats_selected": "Selected",
+            "installer_meta_native": "Native",
+            "installer_meta_flatpak": "Flatpak",
             "scheduler": "Scheduler",
             "system_info": "System information",
             "execution_log": "Execution log",
@@ -205,6 +215,16 @@ class I18N:
             "installer_installed_flatpak": "Instalată (Flatpak)",
             "installer_available": "Disponibilă",
             "installer_not_available": "indisponibil",
+            "installer_update_available": "Actualizare disponibilă",
+            "installer_available_flatpak": "Disponibilă prin Flatpak",
+            "installer_unavailable": "Indisponibilă",
+            "installer_repo_missing": "Lipsește repo extern",
+            "installer_stats_total": "Total",
+            "installer_stats_installed": "Instalate",
+            "installer_stats_not_installed": "Neinstalate",
+            "installer_stats_selected": "Selectate",
+            "installer_meta_native": "Native",
+            "installer_meta_flatpak": "Flatpak",
             "scheduler": "Programare",
             "system_info": "Informații sistem",
             "execution_log": "Jurnal execuție",
@@ -328,8 +348,8 @@ class I18N:
         },
     }
 
-    def __init__(self, lang='en'):
-        self.lang = lang if lang in self.STRINGS else 'en'
+    def __init__(self, lang="en"):
+        self.lang = lang if lang in self.STRINGS else "en"
 
     def set_lang(self, lang):
         if lang in self.STRINGS:
