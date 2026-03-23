@@ -42,6 +42,16 @@ class I18N:
             "installer_installed_flatpak": "Installed (Flatpak)",
             "installer_available": "Available",
             "installer_not_available": "not available",
+            "installer_update_available": "Update available",
+            "installer_available_flatpak": "Available via Flatpak",
+            "installer_unavailable": "Unavailable",
+            "installer_repo_missing": "External repo missing",
+            "installer_stats_total": "Total",
+            "installer_stats_installed": "Installed",
+            "installer_stats_not_installed": "Not installed",
+            "installer_stats_selected": "Selected",
+            "installer_meta_native": "Native",
+            "installer_meta_flatpak": "Flatpak",
             "scheduler": "Scheduler",
             "system_info": "System information",
             "execution_log": "Execution log",
@@ -162,6 +172,12 @@ class I18N:
             "service_changing": "Changing service {name} to {state}...",
             "maintenance_finished_success_status": "Maintenance finished successfully.",
             "maintenance_finished_error_status": "Maintenance finished with errors.",
+            "maintenance_update": "Updating package lists",
+            "maintenance_upgrade": "Upgrading system",
+            "maintenance_autopurge": "Removing old packages (autopurge)",
+            "maintenance_autoremove": "Removing orphan dependencies",
+            "maintenance_autoclean": "Cleaning package cache",
+            "maintenance_flatpak": "Updating Flatpak packages"
         },
         "ro": {
             "app_title": "TuxPulse",
@@ -205,6 +221,16 @@ class I18N:
             "installer_installed_flatpak": "Instalată (Flatpak)",
             "installer_available": "Disponibilă",
             "installer_not_available": "indisponibil",
+            "installer_update_available": "Actualizare disponibilă",
+            "installer_available_flatpak": "Disponibilă prin Flatpak",
+            "installer_unavailable": "Indisponibilă",
+            "installer_repo_missing": "Lipsește repo extern",
+            "installer_stats_total": "Total",
+            "installer_stats_installed": "Instalate",
+            "installer_stats_not_installed": "Neinstalate",
+            "installer_stats_selected": "Selectate",
+            "installer_meta_native": "Native",
+            "installer_meta_flatpak": "Flatpak",
             "scheduler": "Programare",
             "system_info": "Informații sistem",
             "execution_log": "Jurnal execuție",
@@ -325,11 +351,17 @@ class I18N:
             "service_changing": "Se schimbă serviciul {name} la starea {state}...",
             "maintenance_finished_success_status": "Mentenanța s-a încheiat cu succes.",
             "maintenance_finished_error_status": "Mentenanța s-a încheiat cu erori.",
+            "maintenance_update": "Actualizare listă pachete",
+            "maintenance_upgrade": "Actualizare sistem",
+            "maintenance_autopurge": "Eliminare pachete vechi (autopurge)",
+            "maintenance_autoremove": "Eliminare dependențe nefolosite",
+            "maintenance_autoclean": "Curățare cache pachete",
+            "maintenance_flatpak": "Actualizare aplicații Flatpak"
         },
     }
 
-    def __init__(self, lang='en'):
-        self.lang = lang if lang in self.STRINGS else 'en'
+    def __init__(self, lang="en"):
+        self.lang = lang if lang in self.STRINGS else "en"
 
     def set_lang(self, lang):
         if lang in self.STRINGS:
