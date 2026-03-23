@@ -47,7 +47,7 @@ def run_full_maintenance(log_callback, progress_callback):
         raise RuntimeError("No maintenance commands available for this distribution.")
 
     if backend.has_flatpak():
-        commands.append(("Update Flatpak packages", "flatpak update -y"))
+        commands.append(("Update Flatpak packages", "flatpak update -y || true"))
 
     script_content = _build_root_script(commands)
     temp_path = None
