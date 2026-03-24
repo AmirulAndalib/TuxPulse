@@ -11,8 +11,7 @@
 ![Lang](https://img.shields.io/badge/Lang-Python-magenta?style=plastic)
 
 ![Total Downloads](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
-![](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/tuxpulse.deb?displayAssetName=true&style=plastic&color=green)
-[![Downloads latest](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/total?style=plastic)](https://github.com/eoliann/TuxPulse/releases/latest/download/tuxpulse.deb)
+[![Downloads latest](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/tuxpulse.deb?displayAssetName=true&style=plastic)](https://github.com/eoliann/TuxPulse/releases/latest/download/tuxpulse.deb)
 
 
 # TuxPulse
