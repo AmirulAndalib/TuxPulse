@@ -16,7 +16,7 @@ class PackageBackend:
 
         return [
             ("Update package lists", "apt update"),
-            ("Upgrade system packages", "apt full-upgrade -y"),
+            ("Upgrade system packages", "apt upgrade -y"),
             ("Remove old packages and configs", "apt autopurge -y || true"),
             ("Remove unused packages", "apt autoremove -y || true"),
             ("Clean package cache", "apt autoclean || true"),

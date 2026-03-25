@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="tuxpulse"
-VERSION="3.2"
+# VERSION="3.x"
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$ROOT_DIR/packaging/deb"
 DIST_DIR="$ROOT_DIR/dist"
@@ -35,5 +35,8 @@ POST
 chmod 755 "$PKG_DIR/DEBIAN/postinst"
 chmod 755 "$PKG_DIR/usr/bin/tuxpulse"
 
-dpkg-deb --build "$PKG_DIR" "$DIST_DIR/${APP_NAME}_${VERSION}_all.deb"
-echo "Built: $DIST_DIR/${APP_NAME}_${VERSION}_all.deb"
+# dpkg-deb --build "$PKG_DIR" "$DIST_DIR/${APP_NAME}_${VERSION}.deb"
+# echo "Built: $DIST_DIR/${APP_NAME}_${VERSION}.deb"
+
+dpkg-deb --build "$PKG_DIR" "$DIST_DIR/${APP_NAME}.deb"
+echo "Built: $DIST_DIR/${APP_NAME}.deb"

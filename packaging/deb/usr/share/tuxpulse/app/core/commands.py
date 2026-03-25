@@ -16,9 +16,9 @@ def _base_actions():
             {
                 'label_en': 'Upgrade packages',
                 'label_ro': 'Actualizează pachetele',
-                'description_en': 'Runs apt full-upgrade.',
-                'description_ro': 'Rulează apt full-upgrade.',
-                'commands': [['apt', 'full-upgrade', '-y']],
+                'description_en': 'Runs apt upgrade.',
+                'description_ro': 'Rulează apt upgrade.',
+                'commands': [['apt', 'upgrade', '-y']],
                 'root': True,
             },
             {
@@ -27,6 +27,14 @@ def _base_actions():
                 'description_en': 'Runs apt autoremove.',
                 'description_ro': 'Rulează apt autoremove.',
                 'commands': [['apt', 'autoremove', '-y']],
+                'root': True,
+            },
+            {
+                'label_en': 'Autoclean',
+                'label_ro': 'Elimină fișierele nefolosite',
+                'description_en': 'Runs apt autoclean.',
+                'description_ro': 'Rulează apt autoclean.',
+                'commands': [['apt', 'autoclean', '-y']],
                 'root': True,
             },
         ])
