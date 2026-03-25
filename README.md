@@ -12,6 +12,7 @@
 
 ![Total Downloads](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
 ![](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/tuxpulse.deb?displayAssetName=true&style=plastic&color=green)
+[![Downloads latest](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/total?style=plastic)]
 
 
 # TuxPulse
