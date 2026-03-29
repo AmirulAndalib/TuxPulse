@@ -30,7 +30,7 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 - live monitoring dashboard
 - modern graphical disk analysis
 - kernel analysis and suggested old-kernel removal
-- task scheduler based on user crontab
+- install apps from catalog
 - bilingual interface: English / Romanian (in dev)
 
 🚀 New Features
