@@ -1,48 +1,31 @@
+import os
 import platform
 import shutil
-import subprocess
+import socket
+import time
+from datetime import datetime
 
-def _read_os_release():
-    data = {}
-    try:
-        with open("/etc/os-release", "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.strip().split("=", 1)
-                    data[k] = v.strip('"')
-    except Exception:
-        pass
-    return data
+import psutil
 
-def _run(cmd):
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        return r.stdout.strip()
-    except Exception:
-        return ""
 
 def build_system_summary():
-    osr = _read_os_release()
-    distro = osr.get("PRETTY_NAME", "Unknown")
-    pm = "nala" if shutil.which("nala") else "apt" if shutil.which("apt") else "unknown"
-
+    uname = platform.uname()
+    boot_time = datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S')
+    total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+    disk = psutil.disk_usage('/')
+    hostname = socket.gethostname()
     lines = [
-        f"Distribution: {distro}",
-        f"System: {platform.system()}",
-        f"Kernel: {platform.release()}",
-        f"Machine: {platform.machine()}",
-        f"Processor: {platform.processor() or 'Unknown'}",
-        f"Package manager: {pm}",
-        f"Flatpak installed: {'Yes' if shutil.which('flatpak') else 'No'}",
-        f"Snap installed: {'Yes' if shutil.which('snap') else 'No'}",
+        f'Hostname: {hostname}',
+        f'System: {uname.system} {uname.release}',
+        f'Node: {uname.node}',
+        f'Machine: {uname.machine}',
+        f'Processor: {uname.processor or "Unknown"}',
+        f'Boot time: {boot_time}',
+        f'CPU cores (logical): {psutil.cpu_count(logical=True)}',
+        f'RAM total: {total_ram_gb:.2f} GiB',
+        f'RAM used: {psutil.virtual_memory().percent:.1f}%',
+        f'Root usage: {disk.percent:.1f}% ({disk.used / (1024 ** 3):.2f} / {disk.total / (1024 ** 3):.2f} GiB)',
+        f'Python: {platform.python_version()}',
+        f'Home free space: {shutil.disk_usage(os.path.expanduser("~")).free / (1024 ** 3):.2f} GiB',
     ]
-
-    mem = _run(["free", "-h"])
-    if mem:
-        lines += ["", "Memory:", mem]
-
-    root_df = _run(["df", "-h", "/"])
-    if root_df:
-        lines += ["", "Root partition:", root_df]
-
-    return "\n".join(lines)
+    return '\n'.join(lines)
