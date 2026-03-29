@@ -1,3 +1,4 @@
+[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 ![Followers](https://img.shields.io/github/followers/eoliann?style=plastic&color=green)
 ![Watchers](https://img.shields.io/github/watchers/eoliann/TuxPulse?style=plastic)
 ![Stars](https://img.shields.io/github/stars/eoliann/TuxPulse?style=plastic)
