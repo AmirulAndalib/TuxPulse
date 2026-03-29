@@ -37,20 +37,22 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 
 ## UI
 ### Dashboard
-<img width="1920" height="1040" alt="1" src="https://github.com/user-attachments/assets/89431438-fe6a-41e7-8ae3-fef1d54ce379" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Dashboard" src="https://github.com/user-attachments/assets/77037bc5-05bd-4b94-a160-4e2ec4d51988" />
 
 ### Maintenance
-<img width="1920" height="1040" alt="2" src="https://github.com/user-attachments/assets/c408c25a-de42-468b-b17b-e8242d3f8f64" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Maintenance" src="https://github.com/user-attachments/assets/8595ed30-28e2-477c-991e-f82b43fb8fa6" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Maintenance-action" src="https://github.com/user-attachments/assets/823616a5-cfd0-4fb5-aeab-240c5d78b019" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Maintenance-done" src="https://github.com/user-attachments/assets/6b874707-5322-4a1c-b59c-57af42269758" />
 
 ### Disk
-<img width="1920" height="1040" alt="3" src="https://github.com/user-attachments/assets/2441b5c1-09ce-4e2f-99f4-ddd8e43ec770" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Disk" src="https://github.com/user-attachments/assets/dbf2d18a-3358-4a65-9440-32ee9c864234" />
 
 ### Kernel
-<img width="1920" height="1040" alt="4" src="https://github.com/user-attachments/assets/d26a6801-aeb1-49b1-8436-9c6c7de820ed" />
-
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Kernel" src="https://github.com/user-attachments/assets/8bc2d3d0-5f36-4835-986b-77511eaac4bf" />
 
 ### Cleaner
-<img width="1920" height="1040" alt="5" src="https://github.com/user-attachments/assets/052b667b-a925-4c3c-90c1-09e3af6269cc" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Cleaner" src="https://github.com/user-attachments/assets/120a96fc-ade6-4de5-b26b-b669559e83be" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Cleaner-action" src="https://github.com/user-attachments/assets/aaa38d8c-6460-40b9-b824-547da4547b3a" />
 
 🧹 Improved Cleaner\
 
@@ -64,17 +66,16 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 ✔ Debian/Ubuntu → apt autoremove\
 
 ### Startup
-<img width="1920" height="1040" alt="6" src="https://github.com/user-attachments/assets/0e19ea81-2886-4f6d-81fc-61f36919155b" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Startup-apps" src="https://github.com/user-attachments/assets/90c75265-da1c-4ac6-88a0-28c0155eb83d" />
 
 ### Services
-<img width="1920" height="1040" alt="7" src="https://github.com/user-attachments/assets/a5c60a3b-bbd2-4e84-8052-8a90f930c0a2" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Services" src="https://github.com/user-attachments/assets/b3913d6b-18bd-46b2-8057-0ce2289bd29e" />
 
 ### Packages
-<img width="1920" height="1040" alt="8" src="https://github.com/user-attachments/assets/da4c468b-69be-4859-87ce-e8c97f548a28" />
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Packages" src="https://github.com/user-attachments/assets/504ecea0-994f-4ce2-8a12-0937e1dda791" />
 
 ### Installer
-<img width="1920" height="1040" alt="9" src="https://github.com/user-attachments/assets/7de22a24-5b0d-4e21-bd43-18be992db99e" />
-
+<img width="1920" height="1040" alt="TuxPulse - v3 4 - Installer" src="https://github.com/user-attachments/assets/b4aa64b0-b7bc-4049-8f7f-dc0bcae53562" />
 
 🛒 Fully integrated App Store\
 Install apps by category (Browsers, Development, Multimedia, System Tools)\
