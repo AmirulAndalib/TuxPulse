@@ -17,9 +17,6 @@ from PyQt5.QtWidgets import (
 )
 import platform
 
-from PyQt5.QtCore import QTimer
-import threading
-
 from core.commands import build_actions
 from core.i18n import I18N
 from core.runner import CommandRunner
@@ -147,6 +144,16 @@ class MainWindow(QMainWindow):
         self._building_startup_table = False
         self._building_services_table = False
         self.package_total_count = 0
+        self._loaded_sections = {
+            "dashboard": False,
+            "disk": False,
+            "kernel": False,
+            "cleaner": False,
+            "startup": False,
+            "services": False,
+            "packages": False,
+            "installer": False,
+        }
 
         self.setWindowTitle(f"TuxPulse v{APP_VERSION}")
         self.resize(1460, 880)
@@ -262,16 +269,19 @@ class MainWindow(QMainWindow):
         root.addWidget(self.panel, 8)
 
         self.statusBar().showMessage(f"{self.i18n.t('status_prefix')} {self.i18n.t('ready')}")
+
         self.apply_style()
         self.update_action_list()
         self.retranslate_ui()
-        self.refresh_all(initial=True)
-        self.append_log(self.i18n.t("info_started"))
 
-        self.timer = QTimer()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_monitoring)
         self.timer.start(1000)
         self.update_monitoring()
+
+        QTimer.singleShot(0, self.initial_load)
 
     def apply_style(self):
         self.setStyleSheet(
@@ -419,6 +429,46 @@ class MainWindow(QMainWindow):
             self.cleaner_overlay.sync_to_parent()
         super().resizeEvent(event)
 
+    def initial_load(self):
+        self.dashboard_tab.info_box.setPlainText(build_system_summary())
+        self.refresh_cleaner_targets()
+
+        self._loaded_sections["dashboard"] = True
+        self._loaded_sections["cleaner"] = True
+
+        self.append_log(self.i18n.t("info_started"))
+        self.set_status(self.i18n.t("ready"))
+
+    def on_tab_changed(self, index):
+        self._ensure_tab_loaded(index)
+
+    def _ensure_tab_loaded(self, index):
+        widget = self.tabs.widget(index)
+
+        if widget is self.disk_tab and not self._loaded_sections["disk"]:
+            self.refresh_disk_analysis()
+            return
+
+        if widget is self.kernel_tab and not self._loaded_sections["kernel"]:
+            self.refresh_kernel_analysis()
+            return
+
+        if widget is self.startup_tab and not self._loaded_sections["startup"]:
+            self.refresh_startup_apps()
+            return
+
+        if widget is self.services_tab and not self._loaded_sections["services"]:
+            self.refresh_services()
+            return
+
+        if widget is self.packages_tab and not self._loaded_sections["packages"]:
+            self.refresh_packages(update_title_only=False)
+            return
+
+        if widget is self.installer_tab and not self._loaded_sections["installer"]:
+            self.refresh_installer_catalog(self.installer_tab.search.text())
+            return
+
     def change_language(self):
         lang = self.language_combo.currentData()
         self.show_busy_overlay(self.i18n.t("switching_language"))
@@ -426,13 +476,31 @@ class MainWindow(QMainWindow):
             self.i18n.set_lang(lang)
             self.retranslate_ui()
             self.update_action_list()
-            self.refresh_disk_analysis()
-            self.refresh_kernel_analysis()
-            self.refresh_startup_apps()
-            self.refresh_services()
-            self.refresh_packages(update_title_only=True)
+
+            if self._loaded_sections["dashboard"]:
+                self.dashboard_tab.info_box.setPlainText(build_system_summary())
+
+            if self._loaded_sections["disk"]:
+                self.refresh_disk_analysis()
+
+            if self._loaded_sections["kernel"]:
+                self.refresh_kernel_analysis()
+
+            if self._loaded_sections["startup"]:
+                self.refresh_startup_apps()
+
+            if self._loaded_sections["services"]:
+                self.refresh_services()
+
+            if self._loaded_sections["packages"]:
+                self.refresh_packages(update_title_only=False)
+
             self.refresh_cleaner_targets()
-            self.refresh_installer_catalog(self.installer_tab.search.text())
+            self._loaded_sections["cleaner"] = True
+
+            if self._loaded_sections["installer"]:
+                self.refresh_installer_catalog(self.installer_tab.search.text())
+
             QApplication.processEvents()
         finally:
             self.hide_busy_overlay()
@@ -490,19 +558,22 @@ class MainWindow(QMainWindow):
             "state": self.i18n.t("state"),
         })
 
-        self.packages_tab.set_texts({
-            "title": self.i18n.t("installed_packages_count", count=self.package_total_count),
-            "search_placeholder": self.i18n.t("packages_search_placeholder"),
-            "search": self.i18n.t("search"),
-            "installed": self.i18n.t("installed"),
-            "upgradable": self.i18n.t("upgradable"),
-            "remove": self.i18n.t("remove_selected"),
-            "purge": self.i18n.t("purge_selected"),
-            "package": self.i18n.t("package"),
-            "version": self.i18n.t("version"),
-            "status": self.i18n.t("status"),
-            "details": self.i18n.t("package_details"),
-        }, total_count=self.package_total_count)
+        self.packages_tab.set_texts(
+            {
+                "title": self.i18n.t("installed_packages_count", count=self.package_total_count),
+                "search_placeholder": self.i18n.t("packages_search_placeholder"),
+                "search": self.i18n.t("search"),
+                "installed": self.i18n.t("installed"),
+                "upgradable": self.i18n.t("upgradable"),
+                "remove": self.i18n.t("remove_selected"),
+                "purge": self.i18n.t("purge_selected"),
+                "package": self.i18n.t("package"),
+                "version": self.i18n.t("version"),
+                "status": self.i18n.t("status"),
+                "details": self.i18n.t("package_details"),
+            },
+            total_count=self.package_total_count,
+        )
 
         self.installer_tab.set_texts({
             "title": self.i18n.t("installer_title"),
@@ -560,13 +631,29 @@ class MainWindow(QMainWindow):
 
     def refresh_all(self, initial=False):
         self.dashboard_tab.info_box.setPlainText(build_system_summary())
-        self.refresh_disk_analysis()
-        self.refresh_kernel_analysis()
-        self.refresh_startup_apps()
-        self.refresh_services()
-        self.refresh_packages(update_title_only=False)
+        self._loaded_sections["dashboard"] = True
+
+        if self._loaded_sections["disk"]:
+            self.refresh_disk_analysis()
+
+        if self._loaded_sections["kernel"]:
+            self.refresh_kernel_analysis()
+
+        if self._loaded_sections["startup"]:
+            self.refresh_startup_apps()
+
+        if self._loaded_sections["services"]:
+            self.refresh_services()
+
+        if self._loaded_sections["packages"]:
+            self.refresh_packages(update_title_only=False)
+
         self.refresh_cleaner_targets()
-        self.refresh_installer_catalog(self.installer_tab.search.text())
+        self._loaded_sections["cleaner"] = True
+
+        if self._loaded_sections["installer"]:
+            self.refresh_installer_catalog(self.installer_tab.search.text())
+
         self.retranslate_ui()
         if not initial:
             self.append_log(self.i18n.t("info_refreshed"))
@@ -598,14 +685,22 @@ class MainWindow(QMainWindow):
 
     def refresh_disk_analysis(self):
         usage = get_root_usage()
-        self.disk_tab.disk_pie.update_usage(usage["used_gb"], usage["free_gb"], self.i18n.t("disk_partition_usage"))
+        self.disk_tab.disk_pie.update_usage(
+            usage["used_gb"],
+            usage["free_gb"],
+            self.i18n.t("disk_partition_usage"),
+        )
+
         dirs = get_home_top_directories()
         labels = [item["name"] for item in dirs] if dirs else ["N/A"]
         values = [item["size_mb"] for item in dirs] if dirs else [0]
         self.disk_tab.disk_bar.update_bars(labels, values, self.i18n.t("largest_directories"))
+
         self.disk_tab.files_list.clear()
         for item in get_home_largest_files(limit=20):
             self.disk_tab.files_list.addItem(f"{item['size_mb']:>8.2f} MB  {item['path']}")
+
+        self._loaded_sections["disk"] = True
 
     def refresh_kernel_analysis(self):
         report = get_kernel_report()
@@ -618,47 +713,60 @@ class MainWindow(QMainWindow):
         lines += ["", f"{self.i18n.t('suggested_old_kernels')}:"]
         lines.extend(report["suggested"] or ["-"])
         self.kernel_tab.text.setPlainText("\n".join(lines))
+        self._loaded_sections["kernel"] = True
 
     def refresh_startup_apps(self):
         self._building_startup_table = True
-        self.startup_rows = list_startup_apps()
-        self.startup_tab.populate(
-            self.startup_rows,
-            yes_text=self.i18n.t("yes"),
-            no_text=self.i18n.t("no"),
-            scope_map={"user": self.i18n.t("scope_user"), "system": self.i18n.t("scope_system")},
-        )
-        self._building_startup_table = False
+        try:
+            self.startup_rows = list_startup_apps()
+            self.startup_tab.populate(
+                self.startup_rows,
+                yes_text=self.i18n.t("yes"),
+                no_text=self.i18n.t("no"),
+                scope_map={
+                    "user": self.i18n.t("scope_user"),
+                    "system": self.i18n.t("scope_system"),
+                },
+            )
+            self._loaded_sections["startup"] = True
+        finally:
+            self._building_startup_table = False
 
     def refresh_services(self):
         self._building_services_table = True
-        self.service_rows = list_services(limit=200)
-        self.services_tab.populate(
-            self.service_rows,
-            state_labels={
-                "Running": self.i18n.t("running"),
-                "Stopped": self.i18n.t("stopped"),
-                "Disabled": self.i18n.t("disabled"),
-            },
-        )
-        self._building_services_table = False
+        try:
+            self.service_rows = list_services(limit=200)
+            self.services_tab.populate(
+                self.service_rows,
+                state_labels={
+                    "Running": self.i18n.t("running"),
+                    "Stopped": self.i18n.t("stopped"),
+                    "Disabled": self.i18n.t("disabled"),
+                },
+            )
+            self._loaded_sections["services"] = True
+        finally:
+            self._building_services_table = False
 
     def refresh_packages(self, update_title_only=False):
         self.package_total_count = count_installed_packages()
         if not update_title_only:
             self.package_rows = list_installed_packages(limit=300, search="")
             self.packages_tab.populate(self.package_rows)
+            self._loaded_sections["packages"] = True
         self.retranslate_ui()
         self.set_activity(self.i18n.t("showing_installed_packages"), busy=False)
 
     def show_upgradable_packages(self):
         self.package_rows = list_upgradable_packages(limit=300)
         self.packages_tab.populate(self.package_rows)
+        self._loaded_sections["packages"] = True
         self.set_activity(self.i18n.t("showing_upgradable_packages"), busy=False)
 
     def search_packages(self, query):
         self.package_rows = list_installed_packages(limit=300, search=query)
         self.packages_tab.populate(self.package_rows)
+        self._loaded_sections["packages"] = True
         query_label = query or self.i18n.t("packages")
         self.set_activity(self.i18n.t("search_results_for", query=query_label), busy=False)
 
@@ -679,7 +787,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
             self.append_log(f"Error: {exc}")
-        self.refresh_packages()
+        self.refresh_packages(update_title_only=False)
         self.set_activity(self.i18n.t("ready"), busy=False)
 
     def purge_selected_package(self, package_name):
@@ -699,7 +807,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
             self.append_log(f"Error: {exc}")
-        self.refresh_packages()
+        self.refresh_packages(update_title_only=False)
         self.set_activity(self.i18n.t("ready"), busy=False)
 
     def refresh_cleaner_targets(self):
@@ -714,7 +822,11 @@ class MainWindow(QMainWindow):
             return
         name = current.text()
         command = clean_target(name)
-        self.cleaner_overlay = ActivityOverlay(self, self.i18n.t("cleaning_label", name=name), self.i18n.t("please_wait"))
+        self.cleaner_overlay = ActivityOverlay(
+            self,
+            self.i18n.t("cleaning_label", name=name),
+            self.i18n.t("please_wait"),
+        )
         self.cleaner_overlay.sync_to_parent()
         self.cleaner_overlay.show_overlay()
         QApplication.processEvents()
@@ -818,6 +930,7 @@ class MainWindow(QMainWindow):
     def refresh_installer_catalog(self, query=""):
         data = apps_for_display(query)
         self.installer_tab.populate(data)
+        self._loaded_sections["installer"] = True
         self.retranslate_ui()
 
     def on_installer_source_changed(self, app_id, source):
@@ -893,8 +1006,12 @@ class MainWindow(QMainWindow):
     def on_installer_finished(self):
         self.hide_busy_overlay()
         self.refresh_installer_catalog(self.installer_tab.search.text())
-        self.refresh_packages(update_title_only=False)
+        if self._loaded_sections["packages"]:
+            self.refresh_packages(update_title_only=False)
+        else:
+            self.refresh_packages(update_title_only=True)
         self.refresh_cleaner_targets()
+        self._loaded_sections["cleaner"] = True
         QApplication.processEvents()
         self.notify(self.i18n.t("installer_done"))
 
@@ -903,7 +1020,12 @@ class MainWindow(QMainWindow):
         if not commands:
             QMessageBox.information(self, "Info", self.i18n.t("no_old_kernels"))
             return
-        answer = QMessageBox.question(self, "Confirm", self.i18n.t("confirm_remove_kernels"), QMessageBox.Yes | QMessageBox.No)
+        answer = QMessageBox.question(
+            self,
+            "Confirm",
+            self.i18n.t("confirm_remove_kernels"),
+            QMessageBox.Yes | QMessageBox.No,
+        )
         if answer != QMessageBox.Yes:
             return
         self.set_activity(self.i18n.t("cleaning_kernels"), busy=True)

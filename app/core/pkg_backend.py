@@ -13,7 +13,6 @@ class PackageBackend:
     def maintenance_steps(self) -> List[Tuple[str, str]]:
         if self.pm != "apt":
             return []
-
         return [
             ("Update package lists", "apt update"),
             ("Upgrade system packages", "apt upgrade -y"),
@@ -73,8 +72,17 @@ class PackageBackend:
             return []
 
     def count_installed(self) -> int:
-        items = self.list_installed(limit=None)
-        return len(items)
+        if self.pm != "apt":
+            return 0
+
+        try:
+            output = subprocess.check_output(
+                ["dpkg-query", "-W", "-f=${Package}\n"],
+                text=True,
+            )
+            return sum(1 for line in output.splitlines() if line.strip())
+        except Exception:
+            return 0
 
     def list_upgradable(self, limit: Optional[int] = 300) -> List[Dict[str, str]]:
         if self.pm != "apt":
@@ -87,7 +95,6 @@ class PackageBackend:
                 stderr=subprocess.DEVNULL,
             )
             items: List[Dict[str, str]] = []
-
             for line in output.splitlines():
                 line = line.strip()
                 if not line or "/" not in line or line.startswith("Listing..."):
@@ -96,7 +103,6 @@ class PackageBackend:
                 parts = line.split()
                 name = line.split("/", 1)[0]
                 version = parts[1] if len(parts) > 1 else "upgradable"
-
                 items.append(
                     {
                         "name": name,
@@ -104,10 +110,8 @@ class PackageBackend:
                         "status": "upgradable",
                     }
                 )
-
                 if limit is not None and len(items) >= limit:
                     break
-
             return items
         except Exception:
             return []
