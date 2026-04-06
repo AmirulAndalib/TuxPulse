@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+import json
+import platform
+import re
+from html import escape
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 from PyQt5.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
@@ -11,11 +20,11 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
-import platform
 
 from core.commands import build_actions
 from core.i18n import I18N
@@ -46,10 +55,20 @@ from ui.overlays import ActivityOverlay, Toast
 from ui.packages_tab import PackagesTab
 from ui.services_tab import ServicesTab
 from ui.startup_tab import StartupTab
-from version import APP_VERSION
+from version import APP_VERSION, GITHUB_REPO
 
 
-def _get_distribution():
+PROJECT_URL = f"https://github.com/{GITHUB_REPO}"
+PROJECT_RELEASES_URL = f"{PROJECT_URL}/releases"
+PROJECT_ISSUES_URL = f"{PROJECT_URL}/issues"
+LATEST_RELEASE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+DEVELOPER_LINKS = [
+    ("GitHub", "https://github.com/eoliann"),
+    ("Linktree", "https://linktr.ee/eoliam"),
+]
+
+
+def _get_distribution() -> str:
     try:
         with open("/etc/os-release", "r", encoding="utf-8") as handle:
             for line in handle:
@@ -60,6 +79,34 @@ def _get_distribution():
     return platform.system()
 
 
+def _normalize_version(value: str) -> str:
+    value = (value or "").strip()
+    if value.lower().startswith("v"):
+        return value[1:]
+    return value
+
+
+def _version_key(value: str) -> tuple[int, ...]:
+    parts = [int(part) for part in re.findall(r"\d+", _normalize_version(value))]
+    return tuple(parts or [0])
+
+
+def _is_newer_version(remote_version: str, local_version: str) -> bool:
+    remote_key = list(_version_key(remote_version))
+    local_key = list(_version_key(local_version))
+    max_len = max(len(remote_key), len(local_key))
+    remote_key.extend([0] * (max_len - len(remote_key)))
+    local_key.extend([0] * (max_len - len(local_key)))
+    return tuple(remote_key) > tuple(local_key)
+
+
+def _safe_html_links(links: list[tuple[str, str]]) -> str:
+    rows = []
+    for label, url in links:
+        rows.append(f'• <a href="{escape(url)}">{escape(label)}</a>')
+    return "<br>".join(rows)
+
+
 class MaintenanceWorker(QThread):
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
@@ -67,7 +114,7 @@ class MaintenanceWorker(QThread):
     started_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
 
-    def __init__(self, i18n):
+    def __init__(self, i18n: I18N):
         super().__init__()
         self.i18n = i18n
 
@@ -85,7 +132,7 @@ class CleanerWorker(QThread):
     finished_signal = pyqtSignal()
     error_signal = pyqtSignal(str)
 
-    def __init__(self, command):
+    def __init__(self, command: str):
         super().__init__()
         self.command = command
 
@@ -104,7 +151,7 @@ class InstallerWorker(QThread):
     error_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
 
-    def __init__(self, selection, mode="install"):
+    def __init__(self, selection: list[dict], mode: str = "install"):
         super().__init__()
         self.selection = selection
         self.mode = mode
@@ -124,26 +171,240 @@ class InstallerWorker(QThread):
             self.finished_signal.emit()
 
 
+class ReleaseCheckWorker(QThread):
+    result_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, api_url: str, local_version: str):
+        super().__init__()
+        self.api_url = api_url
+        self.local_version = local_version
+
+    def run(self):
+        request = Request(
+            self.api_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "TuxPulse",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+
+        try:
+            with urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+
+            latest_version = str(payload.get("tag_name") or payload.get("name") or "").strip()
+            if not latest_version:
+                raise RuntimeError("GitHub did not return a release tag.")
+
+            self.result_signal.emit(
+                {
+                    "latest_version": latest_version,
+                    "release_url": str(payload.get("html_url") or PROJECT_RELEASES_URL).strip(),
+                    "published_at": str(payload.get("published_at") or "").strip(),
+                    "name": str(payload.get("name") or "").strip(),
+                    "has_update": _is_newer_version(latest_version, self.local_version),
+                }
+            )
+        except HTTPError as exc:
+            self.error_signal.emit(f"GitHub HTTP error: {exc.code}")
+        except URLError as exc:
+            reason = getattr(exc, "reason", exc)
+            self.error_signal.emit(f"GitHub connection error: {reason}")
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
+
+
+class AboutTab(QWidget):
+    refresh_requested = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self._texts = {}
+        self._current_version = ""
+        self._release_info = None
+        self._release_error = ""
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+
+        container = QWidget()
+        self.content = QVBoxLayout(container)
+        self.content.setContentsMargins(0, 0, 0, 0)
+        self.content.setSpacing(12)
+
+        self.title = QLabel()
+        self.title.setObjectName("SectionTitle")
+
+        self.subtitle = QLabel()
+        self.subtitle.setObjectName("Subtitle")
+        self.subtitle.setWordWrap(True)
+
+        self.version_card = self._build_card()
+        self.version_title = QLabel()
+        self.version_title.setObjectName("SectionTitle")
+        self.current_version_label = QLabel()
+        self.current_version_label.setWordWrap(True)
+        self.latest_version_label = QLabel()
+        self.latest_version_label.setWordWrap(True)
+        self.latest_version_label.setOpenExternalLinks(True)
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(
+            "QLabel { background:#0b1220; border:1px solid #243041; border-radius:10px; padding:10px 12px; font-weight:bold; }"
+        )
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.clicked.connect(self.refresh_requested.emit)
+        self.version_card.layout().addWidget(self.version_title)
+        self.version_card.layout().addWidget(self.current_version_label)
+        self.version_card.layout().addWidget(self.latest_version_label)
+        self.version_card.layout().addWidget(self.status_label)
+        self.version_card.layout().addWidget(self.refresh_btn)
+
+        self.project_card = self._build_card()
+        self.project_title = QLabel()
+        self.project_title.setObjectName("SectionTitle")
+        self.project_links = QLabel()
+        self.project_links.setObjectName("Subtitle")
+        self.project_links.setWordWrap(True)
+        self.project_links.setOpenExternalLinks(True)
+        self.project_card.layout().addWidget(self.project_title)
+        self.project_card.layout().addWidget(self.project_links)
+
+        self.developer_card = self._build_card()
+        self.developer_title = QLabel()
+        self.developer_title.setObjectName("SectionTitle")
+        self.developer_links = QLabel()
+        self.developer_links.setObjectName("Subtitle")
+        self.developer_links.setWordWrap(True)
+        self.developer_links.setOpenExternalLinks(True)
+        self.developer_card.layout().addWidget(self.developer_title)
+        self.developer_card.layout().addWidget(self.developer_links)
+
+        self.content.addWidget(self.title)
+        self.content.addWidget(self.subtitle)
+        self.content.addWidget(self.version_card)
+        self.content.addWidget(self.project_card)
+        self.content.addWidget(self.developer_card)
+        self.content.addStretch(1)
+
+        self.scroll.setWidget(container)
+        root.addWidget(self.scroll)
+
+    @staticmethod
+    def _build_card() -> QFrame:
+        card = QFrame()
+        card.setObjectName("Panel")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(8)
+        return card
+
+    def set_texts(self, texts: dict):
+        self._texts = texts or {}
+        self.title.setText(self._texts.get("title", "About TuxPulse"))
+        self.subtitle.setText(self._texts.get("subtitle", "Project information and update availability."))
+        self.version_title.setText(self._texts.get("version_title", "Version"))
+        self.project_title.setText(self._texts.get("project_title", "Project links"))
+        self.developer_title.setText(self._texts.get("developer_title", "Developer"))
+        self.project_links.setText(self._texts.get("project_links_html", ""))
+        self.developer_links.setText(self._texts.get("developer_links_html", ""))
+        self.refresh_btn.setText(self._texts.get("check_updates", "Check again"))
+
+        if self._current_version:
+            self.set_current_version(self._current_version)
+
+        if self._release_error:
+            self.set_error(self._release_error)
+        elif self._release_info is not None:
+            self.set_release_info(self._release_info)
+        else:
+            self.set_checking()
+
+    def set_current_version(self, version: str):
+        self._current_version = version or ""
+        prefix = self._texts.get("current_version", "Installed version")
+        self.current_version_label.setText(f"{escape(prefix)}: <b>{escape(self._current_version)}</b>")
+
+    def set_checking(self):
+        self._release_error = ""
+        latest_prefix = self._texts.get("latest_version", "Latest GitHub release")
+        checking = self._texts.get("checking", "Checking GitHub releases...")
+        self.latest_version_label.setText(f"{escape(latest_prefix)}: {escape(checking)}")
+        self.status_label.setText(checking)
+
+    def set_error(self, message: str):
+        self._release_info = None
+        self._release_error = message or self._texts.get("unavailable", "Could not check GitHub releases right now.")
+        latest_prefix = self._texts.get("latest_version", "Latest GitHub release")
+        unavailable = self._texts.get("unavailable", "Could not check GitHub releases right now.")
+        self.latest_version_label.setText(f"{escape(latest_prefix)}: {escape(unavailable)}")
+        self.status_label.setText(self._release_error)
+
+    def set_release_info(self, info: dict):
+        self._release_info = info or {}
+        self._release_error = ""
+
+        latest_prefix = self._texts.get("latest_version", "Latest GitHub release")
+        published_on = self._texts.get("published_on", "published on")
+        release_url = str(self._release_info.get("release_url") or "").strip()
+        latest_version = str(self._release_info.get("latest_version") or self._texts.get("unknown", "unknown")).strip()
+        published_at = str(self._release_info.get("published_at") or "").strip()
+        published_date = published_at[:10] if published_at else ""
+
+        label = escape(latest_version)
+        if published_date:
+            label = f"{label} ({escape(published_on)} {escape(published_date)})"
+        if release_url:
+            label = f'<a href="{escape(release_url)}">{label}</a>'
+        self.latest_version_label.setText(f"{escape(latest_prefix)}: {label}")
+
+        if self._release_info.get("has_update"):
+            self.status_label.setText(
+                self._texts.get("update_available", "A newer version is available: {version}.").format(
+                    version=latest_version
+                )
+            )
+        else:
+            self.status_label.setText(
+                self._texts.get("up_to_date", "You are using the latest available version.")
+            )
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.i18n = I18N("en")
         self.actions = build_actions()
+        self.runner = CommandRunner(self.append_log)
+        self.monitor = MonitorService(history=40)
+
         self.worker = None
         self.cleaner_worker = None
         self.installer_worker = None
+        self.release_worker = None
+
         self.overlay = None
         self.cleaner_overlay = None
         self._blur = None
+
         self.maintenance_had_error = False
-        self.monitor = MonitorService(history=40)
-        self.runner = CommandRunner(self.append_log)
+        self.release_info = None
+        self.release_error = ""
+        self._update_notified_version = ""
+
         self.startup_rows = []
         self.service_rows = []
         self.package_rows = []
+        self.package_total_count = 0
         self._building_startup_table = False
         self._building_services_table = False
-        self.package_total_count = 0
+
         self._loaded_sections = {
             "dashboard": False,
             "disk": False,
@@ -153,11 +414,29 @@ class MainWindow(QMainWindow):
             "services": False,
             "packages": False,
             "installer": False,
+            "about": False,
         }
 
+        self._setup_window()
+        self._setup_layout()
+        self._connect_signals()
+        self.apply_style()
+        self.update_action_list()
+        self.retranslate_ui()
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_monitoring)
+        self.timer.start(1000)
+        self.update_monitoring()
+
+        QTimer.singleShot(0, self.initial_load)
+        QTimer.singleShot(1200, self.check_latest_release)
+
+    def _setup_window(self):
         self.setWindowTitle(f"TuxPulse v{APP_VERSION}")
         self.resize(1460, 880)
 
+    def _setup_layout(self):
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
@@ -172,9 +451,11 @@ class MainWindow(QMainWindow):
 
         self.title_label = QLabel()
         self.title_label.setObjectName("Title")
+
         self.subtitle_label = QLabel()
         self.subtitle_label.setObjectName("Subtitle")
         self.subtitle_label.setWordWrap(True)
+
         self.distribution_label = QLabel()
         self.distribution_label.setObjectName("SectionTitle")
 
@@ -183,7 +464,6 @@ class MainWindow(QMainWindow):
         self.language_combo = QComboBox()
         self.language_combo.addItem("English", "en")
         self.language_combo.addItem("Română", "ro")
-        self.language_combo.currentIndexChanged.connect(self.change_language)
         language_row.addWidget(self.language_label)
         language_row.addWidget(self.language_combo)
 
@@ -193,11 +473,9 @@ class MainWindow(QMainWindow):
         self.action_list.setObjectName("ActionList")
 
         self.run_btn = QPushButton()
-        self.run_btn.clicked.connect(self.run_selected_action)
         self.refresh_btn = QPushButton()
-        self.refresh_btn.clicked.connect(self.refresh_all)
         self.quick_full_btn = QPushButton()
-        self.quick_full_btn.clicked.connect(self.start_full_maintenance)
+
         self.activity_label = QLabel()
         self.activity_label.setObjectName("Subtitle")
         self.activity_label.setWordWrap(True)
@@ -232,6 +510,35 @@ class MainWindow(QMainWindow):
         self.services_tab = ServicesTab()
         self.packages_tab = PackagesTab()
         self.installer_tab = InstallerTab()
+        self.about_tab = AboutTab()
+
+        for tab in (
+            self.dashboard_tab,
+            self.maintenance_tab,
+            self.disk_tab,
+            self.kernel_tab,
+            self.cleaner_tab,
+            self.startup_tab,
+            self.services_tab,
+            self.packages_tab,
+            self.installer_tab,
+            self.about_tab,
+        ):
+            self.tabs.addTab(tab, "")
+
+        panel_layout.addWidget(self.tabs)
+
+        root.addWidget(self.sidebar, 3)
+        root.addWidget(self.panel, 8)
+
+        self.statusBar().showMessage(f"{self._tr('status_prefix', 'Status:')} {self._tr('ready', 'Ready')}")
+
+    def _connect_signals(self):
+        self.language_combo.currentIndexChanged.connect(self.change_language)
+        self.run_btn.clicked.connect(self.run_selected_action)
+        self.refresh_btn.clicked.connect(self.refresh_all)
+        self.quick_full_btn.clicked.connect(self.start_full_maintenance)
+        self.tabs.currentChanged.connect(self.on_tab_changed)
 
         self.maintenance_tab.full_btn.clicked.connect(self.start_full_maintenance)
         self.disk_tab.analyze_btn.clicked.connect(self.refresh_disk_analysis)
@@ -253,35 +560,75 @@ class MainWindow(QMainWindow):
         self.installer_tab.remove_one_requested.connect(self.remove_one_app)
         self.installer_tab.update_one_requested.connect(self.update_one_app)
         self.installer_tab.source_changed.connect(self.on_installer_source_changed)
+        self.about_tab.refresh_requested.connect(self.check_latest_release)
 
-        self.tabs.addTab(self.dashboard_tab, "")
-        self.tabs.addTab(self.maintenance_tab, "")
-        self.tabs.addTab(self.disk_tab, "")
-        self.tabs.addTab(self.kernel_tab, "")
-        self.tabs.addTab(self.cleaner_tab, "")
-        self.tabs.addTab(self.startup_tab, "")
-        self.tabs.addTab(self.services_tab, "")
-        self.tabs.addTab(self.packages_tab, "")
-        self.tabs.addTab(self.installer_tab, "")
+    def _tr(self, key: str, fallback_en: str, fallback_ro: str | None = None, **kwargs) -> str:
+        text = self.i18n.t(key, **kwargs)
+        if text == key:
+            fallback = fallback_ro if self.i18n.lang == "ro" and fallback_ro is not None else fallback_en
+            try:
+                return fallback.format(**kwargs)
+            except Exception:
+                return fallback
+        return text
 
-        panel_layout.addWidget(self.tabs)
-        root.addWidget(self.sidebar, 3)
-        root.addWidget(self.panel, 8)
-
-        self.statusBar().showMessage(f"{self.i18n.t('status_prefix')} {self.i18n.t('ready')}")
-
-        self.apply_style()
-        self.update_action_list()
-        self.retranslate_ui()
-
-        self.tabs.currentChanged.connect(self.on_tab_changed)
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_monitoring)
-        self.timer.start(1000)
-        self.update_monitoring()
-
-        QTimer.singleShot(0, self.initial_load)
+    def _about_texts(self) -> dict:
+        return {
+            "title": self._tr("about_title", "About TuxPulse", "Despre TuxPulse"),
+            "subtitle": self._tr(
+                "about_subtitle",
+                "Project information, download links and update availability.",
+                "Informații despre proiect, link-uri utile și disponibilitatea unei versiuni noi.",
+            ),
+            "version_title": self._tr("about_version_title", "Version information", "Informații versiune"),
+            "current_version": self._tr("about_current_version", "Installed version", "Versiune instalată"),
+            "latest_version": self._tr("about_latest_version", "Latest GitHub release", "Ultimul release GitHub"),
+            "checking": self._tr(
+                "about_checking",
+                "Checking GitHub releases...",
+                "Se verifică release-urile GitHub...",
+            ),
+            "unavailable": self._tr(
+                "about_unavailable",
+                "Could not check GitHub releases right now.",
+                "Release-urile GitHub nu pot fi verificate acum.",
+            ),
+            "unknown": self._tr("about_unknown", "unknown", "necunoscut"),
+            "published_on": self._tr("about_published_on", "published on", "publicat la"),
+            "update_available": self._tr(
+                "about_update_available",
+                "A newer version is available: {version}.",
+                "Este disponibilă o versiune mai nouă: {version}.",
+                version="{version}",
+            ),
+            "up_to_date": self._tr(
+                "about_up_to_date",
+                "You are using the latest available version.",
+                "Folosești deja cea mai nouă versiune disponibilă.",
+            ),
+            "check_updates": self._tr("about_check_updates", "Check again", "Verifică din nou"),
+            "project_title": self._tr("about_project_links", "Project links", "Link-uri proiect"),
+            "developer_title": self._tr("about_developer_links", "Developer", "Dezvoltator"),
+            "project_links_html": _safe_html_links(
+                [
+                    (self._tr("about_link_repo", "GitHub repository", "Repository GitHub"), PROJECT_URL),
+                    (self._tr("about_link_releases", "Releases page", "Pagina de releases"), PROJECT_RELEASES_URL),
+                    (self._tr("about_link_issues", "Issues / bug reports", "Issues / raportare bug-uri"), PROJECT_ISSUES_URL),
+                ]
+            ),
+            "developer_links_html": _safe_html_links(
+                [
+                    (
+                        self._tr("about_link_github_profile", "GitHub profile", "Profil GitHub"),
+                        DEVELOPER_LINKS[0][1],
+                    ),
+                    (
+                        self._tr("about_link_linktree", "Linktree", "Linktree"),
+                        DEVELOPER_LINKS[1][1],
+                    ),
+                ]
+            ),
+        }
 
     def apply_style(self):
         self.setStyleSheet(
@@ -385,17 +732,17 @@ class MainWindow(QMainWindow):
             """
         )
 
-    def set_status(self, text):
-        self.statusBar().showMessage(f"{self.i18n.t('status_prefix')} {text}", 5000)
+    def set_status(self, text: str):
+        self.statusBar().showMessage(f"{self._tr('status_prefix', 'Status:')} {text}", 5000)
 
-    def notify(self, text):
+    def notify(self, text: str):
         try:
             Toast(self, text)
         except Exception:
             pass
         self.set_status(text)
 
-    def set_activity(self, text, busy=False):
+    def set_activity(self, text: str, busy: bool = False):
         self.maintenance_tab.status_label.setText(text)
         self.set_status(text)
         if busy:
@@ -403,14 +750,14 @@ class MainWindow(QMainWindow):
         else:
             QApplication.restoreOverrideCursor()
 
-    def show_busy_overlay(self, message, detail=None, blur=True):
+    def show_busy_overlay(self, message: str, detail: str | None = None, blur: bool = True):
         if blur:
             self._blur = QGraphicsBlurEffect()
             self._blur.setBlurRadius(8)
             self.centralWidget().setGraphicsEffect(self._blur)
         else:
             self._blur = None
-        self.overlay = ActivityOverlay(self, message, detail or self.i18n.t("please_wait"))
+        self.overlay = ActivityOverlay(self, message, detail or self._tr("please_wait", "Please wait...", "Te rog așteaptă..."))
         self.overlay.sync_to_parent()
         self.overlay.show_overlay()
         QApplication.processEvents()
@@ -421,6 +768,7 @@ class MainWindow(QMainWindow):
             self.overlay.deleteLater()
             self.overlay = None
         self.centralWidget().setGraphicsEffect(None)
+        self._blur = None
 
     def resizeEvent(self, event):
         if self.overlay is not None and self.overlay.isVisible():
@@ -432,17 +780,19 @@ class MainWindow(QMainWindow):
     def initial_load(self):
         self.dashboard_tab.info_box.setPlainText(build_system_summary())
         self.refresh_cleaner_targets()
+        self.refresh_about_tab()
 
         self._loaded_sections["dashboard"] = True
         self._loaded_sections["cleaner"] = True
+        self._loaded_sections["about"] = True
 
-        self.append_log(self.i18n.t("info_started"))
-        self.set_status(self.i18n.t("ready"))
+        self.append_log(self._tr("info_started", "Application started."))
+        self.set_status(self._tr("ready", "Ready"))
 
-    def on_tab_changed(self, index):
+    def on_tab_changed(self, index: int):
         self._ensure_tab_loaded(index)
 
-    def _ensure_tab_loaded(self, index):
+    def _ensure_tab_loaded(self, index: int):
         widget = self.tabs.widget(index)
 
         if widget is self.disk_tab and not self._loaded_sections["disk"]:
@@ -469,29 +819,26 @@ class MainWindow(QMainWindow):
             self.refresh_installer_catalog(self.installer_tab.search.text())
             return
 
-    def change_language(self):
-        lang = self.language_combo.currentData()
-        self.show_busy_overlay(self.i18n.t("switching_language"))
+        if widget is self.about_tab and not self._loaded_sections["about"]:
+            self.refresh_about_tab()
+
+    def change_language(self, *_args):
+        self.show_busy_overlay(self._tr("switching_language", "Switching language...", "Se schimbă limba..."))
         try:
-            self.i18n.set_lang(lang)
+            self.i18n.set_lang(self.language_combo.currentData())
             self.retranslate_ui()
             self.update_action_list()
 
             if self._loaded_sections["dashboard"]:
                 self.dashboard_tab.info_box.setPlainText(build_system_summary())
-
             if self._loaded_sections["disk"]:
                 self.refresh_disk_analysis()
-
             if self._loaded_sections["kernel"]:
                 self.refresh_kernel_analysis()
-
             if self._loaded_sections["startup"]:
                 self.refresh_startup_apps()
-
             if self._loaded_sections["services"]:
                 self.refresh_services()
-
             if self._loaded_sections["packages"]:
                 self.refresh_packages(update_title_only=False)
 
@@ -501,109 +848,181 @@ class MainWindow(QMainWindow):
             if self._loaded_sections["installer"]:
                 self.refresh_installer_catalog(self.installer_tab.search.text())
 
+            self.refresh_about_tab()
             QApplication.processEvents()
         finally:
             self.hide_busy_overlay()
 
     def retranslate_ui(self):
         self.setWindowTitle(f"TuxPulse v{APP_VERSION}")
-        self.title_label.setText(f"{self.i18n.t('app_name')} v{APP_VERSION}")
-        self.subtitle_label.setText(self.i18n.t("subtitle"))
-        self.distribution_label.setText(f"{self.i18n.t('distribution')}: {_get_distribution()}")
-        self.language_label.setText(self.i18n.t("language"))
-        self.actions_label.setText(self.i18n.t("system_actions"))
-        self.run_btn.setText(self.i18n.t("run_action"))
-        self.refresh_btn.setText(self.i18n.t("refresh"))
-        self.quick_full_btn.setText(self.i18n.t("full_maintenance"))
+        self.title_label.setText(f"{self._tr('app_name', 'TuxPulse')} v{APP_VERSION}")
+        self.subtitle_label.setText(self._tr("subtitle", "Linux maintenance toolkit", "Trusă de mentenanță pentru Linux"))
+        self.distribution_label.setText(f"{self._tr('distribution', 'Distribution', 'Distribuție')}: {_get_distribution()}")
+        self.language_label.setText(self._tr("language", "Language", "Limbă"))
+        self.actions_label.setText(self._tr("system_actions", "Quick actions", "Acțiuni rapide"))
+        self.run_btn.setText(self._tr("run_action", "Run action", "Rulează acțiunea"))
+        self.refresh_btn.setText(self._tr("refresh", "Refresh", "Reîmprospătează"))
+        self.quick_full_btn.setText(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
         self.activity_label.setText(f"v{APP_VERSION}")
+
         if not (self.worker and self.worker.isRunning()):
-            self.set_status(self.i18n.t("ready"))
+            self.set_status(self._tr("ready", "Ready", "Gata"))
 
-        self.dashboard_tab.info_title.setText(self.i18n.t("system_info"))
-        self.dashboard_tab.log_title.setText(self.i18n.t("execution_log"))
+        self.dashboard_tab.info_title.setText(self._tr("system_info", "System information", "Informații sistem"))
+        self.dashboard_tab.log_title.setText(self._tr("execution_log", "Execution log", "Jurnal execuție"))
 
-        self.maintenance_tab.title.setText(self.i18n.t("maintenance"))
-        self.maintenance_tab.full_btn.setText(self.i18n.t("full_maintenance"))
-        self.maintenance_tab.output_title.setText(self.i18n.t("maintenance_live_output"))
+        self.maintenance_tab.title.setText(self._tr("maintenance", "Maintenance", "Mentenanță"))
+        self.maintenance_tab.full_btn.setText(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
+        self.maintenance_tab.output_title.setText(
+            self._tr("maintenance_live_output", "Live output", "Output în timp real")
+        )
         if not (self.worker and self.worker.isRunning()):
-            self.maintenance_tab.status_label.setText(self.i18n.t("maintenance_idle"))
-            self.maintenance_tab.step_label.setText(self.i18n.t("step_waiting"))
-            self.maintenance_tab.eta_label.setText(self.i18n.t("eta_waiting"))
+            self.maintenance_tab.status_label.setText(self._tr("maintenance_idle", "Idle", "Inactiv"))
+            self.maintenance_tab.step_label.setText(self._tr("step_waiting", "Waiting...", "În așteptare..."))
+            self.maintenance_tab.eta_label.setText(self._tr("eta_waiting", "ETA: waiting", "ETA: în așteptare"))
 
-        self.disk_tab.partition_title.setText(self.i18n.t("disk_partition_usage"))
-        self.disk_tab.dirs_title.setText(self.i18n.t("largest_directories"))
-        self.disk_tab.files_title.setText(self.i18n.t("largest_files"))
-        self.disk_tab.analyze_btn.setText(self.i18n.t("analyze_disk"))
+        self.disk_tab.partition_title.setText(self._tr("disk_partition_usage", "Disk partition usage", "Utilizare partiție disc"))
+        self.disk_tab.dirs_title.setText(self._tr("largest_directories", "Largest directories", "Cele mai mari directoare"))
+        self.disk_tab.files_title.setText(self._tr("largest_files", "Largest files", "Cele mai mari fișiere"))
+        self.disk_tab.analyze_btn.setText(self._tr("analyze_disk", "Analyze disk", "Analizează discul"))
 
-        self.kernel_tab.title.setText(self.i18n.t("kernel_tools"))
-        self.kernel_tab.analyze_btn.setText(self.i18n.t("analyze_kernels"))
-        self.kernel_tab.remove_btn.setText(self.i18n.t("remove_old_kernels"))
+        self.kernel_tab.title.setText(self._tr("kernel_tools", "Kernel tools", "Instrumente kernel"))
+        self.kernel_tab.analyze_btn.setText(self._tr("analyze_kernels", "Analyze kernels", "Analizează kernel-urile"))
+        self.kernel_tab.remove_btn.setText(self._tr("remove_old_kernels", "Remove old kernels", "Elimină kernel-urile vechi"))
 
-        self.cleaner_tab.title.setText(self.i18n.t("cleaner_title"))
-        self.cleaner_tab.clean_btn.setText(self.i18n.t("run_action"))
+        self.cleaner_tab.title.setText(self._tr("cleaner_title", "Cleaner", "Curățare"))
+        self.cleaner_tab.clean_btn.setText(self._tr("run_action", "Run action", "Rulează acțiunea"))
 
-        self.startup_tab.set_texts({
-            "title": self.i18n.t("startup_title"),
-            "hint": self.i18n.t("startup_hint"),
-            "name": self.i18n.t("startup_name"),
-            "exec": self.i18n.t("startup_exec"),
-            "enabled": self.i18n.t("startup_enabled"),
-            "scope": self.i18n.t("startup_scope"),
-        })
+        self.startup_tab.set_texts(
+            {
+                "title": self._tr("startup_title", "Startup applications", "Aplicații la pornire"),
+                "hint": self._tr("startup_hint", "Enable or disable startup entries.", "Activează sau dezactivează intrările de pornire."),
+                "name": self._tr("startup_name", "Name", "Nume"),
+                "exec": self._tr("startup_exec", "Command", "Comandă"),
+                "enabled": self._tr("startup_enabled", "Enabled", "Activat"),
+                "scope": self._tr("startup_scope", "Scope", "Domeniu"),
+            }
+        )
 
-        self.services_tab.set_texts({
-            "title": self.i18n.t("services_title"),
-            "hint": self.i18n.t("services_hint"),
-            "service": self.i18n.t("service"),
-            "state": self.i18n.t("state"),
-        })
+        self.services_tab.set_texts(
+            {
+                "title": self._tr("services_title", "Services", "Servicii"),
+                "hint": self._tr("services_hint", "Start, stop or disable services.", "Pornește, oprește sau dezactivează servicii."),
+                "service": self._tr("service", "Service", "Serviciu"),
+                "state": self._tr("state", "State", "Stare"),
+            }
+        )
 
         self.packages_tab.set_texts(
             {
-                "title": self.i18n.t("installed_packages_count", count=self.package_total_count),
-                "search_placeholder": self.i18n.t("packages_search_placeholder"),
-                "search": self.i18n.t("search"),
-                "installed": self.i18n.t("installed"),
-                "upgradable": self.i18n.t("upgradable"),
-                "remove": self.i18n.t("remove_selected"),
-                "purge": self.i18n.t("purge_selected"),
-                "package": self.i18n.t("package"),
-                "version": self.i18n.t("version"),
-                "status": self.i18n.t("status"),
-                "details": self.i18n.t("package_details"),
+                "title": self._tr(
+                    "installed_packages_count",
+                    "Installed packages: {count}",
+                    "Pachete instalate: {count}",
+                    count=self.package_total_count,
+                ),
+                "search_placeholder": self._tr("packages_search_placeholder", "Search installed packages...", "Caută pachete instalate..."),
+                "search": self._tr("search", "Search", "Caută"),
+                "installed": self._tr("installed", "Installed", "Instalat"),
+                "upgradable": self._tr("upgradable", "Upgradable", "Actualizabil"),
+                "remove": self._tr("remove_selected", "Remove selected", "Elimină selectatul"),
+                "purge": self._tr("purge_selected", "Purge selected", "Elimină complet selectatul"),
+                "package": self._tr("package", "Package", "Pachet"),
+                "version": self._tr("version", "Version", "Versiune"),
+                "status": self._tr("status", "Status", "Stare"),
+                "details": self._tr("package_details", "Details", "Detalii"),
             },
             total_count=self.package_total_count,
         )
 
-        self.installer_tab.set_texts({
-            "title": self.i18n.t("installer_title"),
-            "subtitle": self.i18n.t("installer_subtitle"),
-            "search_placeholder": self.i18n.t("installer_search_placeholder"),
-            "install_selected": self.i18n.t("installer_install_selected"),
-            "remove_selected": self.i18n.t("installer_remove_selected"),
-            "update_selected": self.i18n.t("installer_update_selected"),
-            "status": self.i18n.t("installer_status_hint"),
-            "install": self.i18n.t("installer_install"),
-            "remove": self.i18n.t("installer_remove"),
-            "update": self.i18n.t("installer_update"),
-            "source": self.i18n.t("installer_source"),
-            "native": self.i18n.t("installer_native"),
-            "flatpak": self.i18n.t("installer_flatpak"),
-            "installed_native": self.i18n.t("installer_installed_native"),
-            "installed_flatpak": self.i18n.t("installer_installed_flatpak"),
-            "available": self.i18n.t("installer_available"),
-            "not_available": self.i18n.t("installer_not_available"),
-        })
+        self.installer_tab.set_texts(
+            {
+                "title": self._tr("installer_title", "Install", "Install"),
+                "subtitle": self._tr(
+                    "installer_subtitle",
+                    "Install software from native repositories or Flatpak.",
+                    "Instalează software din repository-urile native sau din Flatpak.",
+                ),
+                "search_placeholder": self._tr(
+                    "installer_search_placeholder",
+                    "Search applications...",
+                    "Caută aplicații...",
+                ),
+                "install_selected": self._tr(
+                    "installer_install_selected",
+                    "Install selected",
+                    "Instalează selecția",
+                ),
+                "remove_selected": self._tr(
+                    "installer_remove_selected",
+                    "Remove selected",
+                    "Elimină selecția",
+                ),
+                "update_selected": self._tr(
+                    "installer_update_selected",
+                    "Update selected",
+                    "Actualizează selecția",
+                ),
+                "status": self._tr(
+                    "installer_status_hint",
+                    "Choose apps and an installation source.",
+                    "Alege aplicațiile și sursa de instalare.",
+                ),
+                "install": self._tr("installer_install", "Install", "Instalează"),
+                "remove": self._tr("installer_remove", "Remove", "Elimină"),
+                "update": self._tr("installer_update", "Update", "Actualizează"),
+                "source": self._tr("installer_source", "Source:", "Sursă:"),
+                "native": self._tr("installer_native", "Native", "Nativ"),
+                "flatpak": self._tr("installer_flatpak", "Flatpak", "Flatpak"),
+                "installed_native": self._tr(
+                    "installer_installed_native",
+                    "Installed (native)",
+                    "Instalat (nativ)",
+                ),
+                "installed_flatpak": self._tr(
+                    "installer_installed_flatpak",
+                    "Installed (Flatpak)",
+                    "Instalat (Flatpak)",
+                ),
+                "available": self._tr("installer_available", "Available", "Disponibil"),
+                "not_available": self._tr("installer_not_available", "not available", "indisponibil"),
+                "available_flatpak": self._tr(
+                    "installer_available_flatpak",
+                    "Available via Flatpak",
+                    "Disponibil prin Flatpak",
+                ),
+                "unavailable": self._tr("installer_unavailable", "Unavailable", "Indisponibil"),
+                "update_available": self._tr(
+                    "installer_update_available",
+                    "Update available",
+                    "Actualizare disponibilă",
+                ),
+                "repo_missing": self._tr(
+                    "installer_repo_missing",
+                    "External repo missing",
+                    "Lipsește repository-ul extern",
+                ),
+                "meta_native": self._tr("installer_meta_native", "Native", "Nativ"),
+                "meta_flatpak": self._tr("installer_meta_flatpak", "Flatpak", "Flatpak"),
+                "stats_total": self._tr("installer_stats_total", "Total", "Total"),
+                "stats_installed": self._tr("installer_stats_installed", "Installed", "Instalate"),
+                "stats_not_installed": self._tr("installer_stats_not_installed", "Not installed", "Neinstalate"),
+                "stats_selected": self._tr("installer_stats_selected", "Selected", "Selectate"),
+            }
+        )
 
-        self.tabs.setTabText(0, self.i18n.t("dashboard"))
-        self.tabs.setTabText(1, self.i18n.t("maintenance"))
-        self.tabs.setTabText(2, self.i18n.t("disk_analysis"))
-        self.tabs.setTabText(3, self.i18n.t("kernel_tools"))
-        self.tabs.setTabText(4, self.i18n.t("cleaner"))
-        self.tabs.setTabText(5, self.i18n.t("startup_apps"))
-        self.tabs.setTabText(6, self.i18n.t("services"))
-        self.tabs.setTabText(7, self.i18n.t("packages"))
-        self.tabs.setTabText(8, self.i18n.t("installer_title"))
+        self.refresh_about_tab()
+
+        self.tabs.setTabText(0, self._tr("dashboard", "Dashboard", "Panou"))
+        self.tabs.setTabText(1, self._tr("maintenance", "Maintenance", "Mentenanță"))
+        self.tabs.setTabText(2, self._tr("disk_analysis", "Disk", "Disc"))
+        self.tabs.setTabText(3, self._tr("kernel_tools", "Kernel", "Kernel"))
+        self.tabs.setTabText(4, self._tr("cleaner", "Cleaner", "Curățare"))
+        self.tabs.setTabText(5, self._tr("startup_apps", "Startup", "Pornire"))
+        self.tabs.setTabText(6, self._tr("services", "Services", "Servicii"))
+        self.tabs.setTabText(7, self._tr("packages", "Packages", "Pachete"))
+        self.tabs.setTabText(8, self._tr("installer_title", "Install", "Install"))
+        self.tabs.setTabText(9, self._tr("about_tab", "About", "Despre"))
 
     def update_action_list(self):
         current_row = self.action_list.currentRow()
@@ -617,34 +1036,30 @@ class MainWindow(QMainWindow):
         if self.action_list.count() > 0:
             self.action_list.setCurrentRow(max(0, current_row))
 
-    def append_log(self, text):
+    def append_log(self, text: str):
         cursor = self.dashboard_tab.log_box.textCursor()
         cursor.movePosition(cursor.End)
         self.dashboard_tab.log_box.setTextCursor(cursor)
         self.dashboard_tab.log_box.insertPlainText(text + ("\n" if not text.endswith("\n") else ""))
 
-    def append_maintenance_log(self, text):
+    def append_maintenance_log(self, text: str):
         cursor = self.maintenance_tab.log_box.textCursor()
         cursor.movePosition(cursor.End)
         self.maintenance_tab.log_box.setTextCursor(cursor)
         self.maintenance_tab.log_box.insertPlainText(text + ("\n" if not text.endswith("\n") else ""))
 
-    def refresh_all(self, initial=False):
+    def refresh_all(self, initial: bool = False):
         self.dashboard_tab.info_box.setPlainText(build_system_summary())
         self._loaded_sections["dashboard"] = True
 
         if self._loaded_sections["disk"]:
             self.refresh_disk_analysis()
-
         if self._loaded_sections["kernel"]:
             self.refresh_kernel_analysis()
-
         if self._loaded_sections["startup"]:
             self.refresh_startup_apps()
-
         if self._loaded_sections["services"]:
             self.refresh_services()
-
         if self._loaded_sections["packages"]:
             self.refresh_packages(update_title_only=False)
 
@@ -654,47 +1069,57 @@ class MainWindow(QMainWindow):
         if self._loaded_sections["installer"]:
             self.refresh_installer_catalog(self.installer_tab.search.text())
 
+        self.refresh_about_tab()
         self.retranslate_ui()
+
         if not initial:
-            self.append_log(self.i18n.t("info_refreshed"))
-            self.set_status(self.i18n.t("information_refreshed_status"))
+            self.append_log(self._tr("info_refreshed", "Information refreshed."))
+            self.set_status(self._tr("information_refreshed_status", "Information refreshed", "Informațiile au fost reîmprospătate"))
 
     def run_selected_action(self):
         row = self.action_list.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Warning", self.i18n.t("warning_select_action"))
+            QMessageBox.warning(self, "Warning", self._tr("warning_select_action", "Please select an action first.", "Selectează mai întâi o acțiune."))
             return
+
         action = self.actions[row]
         label = action["label_en"] if self.i18n.lang == "en" else action["label_ro"]
         description = action["description_en"] if self.i18n.lang == "en" else action["description_ro"]
-        self.set_activity(self.i18n.t("running_label", label=label), busy=True)
+
+        self.set_activity(self._tr("running_label", "Running: {label}", "Se rulează: {label}", label=label), busy=True)
         self.append_log(f"\n=== {label} ===")
         self.append_log(description)
+
         code = self.runner.run(action["commands"], requires_root=action.get("root", True))
         if code != 0:
-            QMessageBox.critical(self, "Error", f"{self.i18n.t('action_failed')} {code}")
+            QMessageBox.critical(self, "Error", f"{self._tr('action_failed', 'Action failed with exit code:')} {code}")
+
         self.refresh_all()
-        self.set_activity(self.i18n.t("ready"), busy=False)
+        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
 
     def update_monitoring(self):
         data = self.monitor.snapshot()
-        self.dashboard_tab.cpu_chart.update_series(data["cpu_history"], self.i18n.t("cpu_usage"))
-        self.dashboard_tab.ram_chart.update_series(data["ram_history"], self.i18n.t("ram_usage"))
-        self.dashboard_tab.disk_chart.update_series(data["disk_history"], self.i18n.t("disk_usage"))
-        self.dashboard_tab.net_chart.update_series(data["net_history"], self.i18n.t("network_usage"))
+        self.dashboard_tab.cpu_chart.update_series(data["cpu_history"], self._tr("cpu_usage", "CPU usage", "Utilizare CPU"))
+        self.dashboard_tab.ram_chart.update_series(data["ram_history"], self._tr("ram_usage", "RAM usage", "Utilizare RAM"))
+        self.dashboard_tab.disk_chart.update_series(data["disk_history"], self._tr("disk_usage", "Disk usage", "Utilizare disc"))
+        self.dashboard_tab.net_chart.update_series(data["net_history"], self._tr("network_usage", "Network usage", "Utilizare rețea"))
 
     def refresh_disk_analysis(self):
         usage = get_root_usage()
         self.disk_tab.disk_pie.update_usage(
             usage["used_gb"],
             usage["free_gb"],
-            self.i18n.t("disk_partition_usage"),
+            self._tr("disk_partition_usage", "Disk partition usage", "Utilizare partiție disc"),
         )
 
         dirs = get_home_top_directories()
         labels = [item["name"] for item in dirs] if dirs else ["N/A"]
         values = [item["size_mb"] for item in dirs] if dirs else [0]
-        self.disk_tab.disk_bar.update_bars(labels, values, self.i18n.t("largest_directories"))
+        self.disk_tab.disk_bar.update_bars(
+            labels,
+            values,
+            self._tr("largest_directories", "Largest directories", "Cele mai mari directoare"),
+        )
 
         self.disk_tab.files_list.clear()
         for item in get_home_largest_files(limit=20):
@@ -705,12 +1130,12 @@ class MainWindow(QMainWindow):
     def refresh_kernel_analysis(self):
         report = get_kernel_report()
         lines = [
-            f"{self.i18n.t('current_kernel')}: {report['current']}",
+            f"{self._tr('current_kernel', 'Current kernel', 'Kernel curent')}: {report['current']}",
             "",
-            f"{self.i18n.t('installed_kernels')}:",
+            f"{self._tr('installed_kernels', 'Installed kernels', 'Kernel-uri instalate')}:",
         ]
         lines.extend(report["installed"] or ["-"])
-        lines += ["", f"{self.i18n.t('suggested_old_kernels')}:"]
+        lines += ["", f"{self._tr('suggested_old_kernels', 'Suggested old kernels', 'Kernel-uri vechi sugerate')}:" ]
         lines.extend(report["suggested"] or ["-"])
         self.kernel_tab.text.setPlainText("\n".join(lines))
         self._loaded_sections["kernel"] = True
@@ -721,11 +1146,11 @@ class MainWindow(QMainWindow):
             self.startup_rows = list_startup_apps()
             self.startup_tab.populate(
                 self.startup_rows,
-                yes_text=self.i18n.t("yes"),
-                no_text=self.i18n.t("no"),
+                yes_text=self._tr("yes", "Yes", "Da"),
+                no_text=self._tr("no", "No", "Nu"),
                 scope_map={
-                    "user": self.i18n.t("scope_user"),
-                    "system": self.i18n.t("scope_system"),
+                    "user": self._tr("scope_user", "User", "Utilizator"),
+                    "system": self._tr("scope_system", "System", "Sistem"),
                 },
             )
             self._loaded_sections["startup"] = True
@@ -739,47 +1164,48 @@ class MainWindow(QMainWindow):
             self.services_tab.populate(
                 self.service_rows,
                 state_labels={
-                    "Running": self.i18n.t("running"),
-                    "Stopped": self.i18n.t("stopped"),
-                    "Disabled": self.i18n.t("disabled"),
+                    "Running": self._tr("running", "Running", "Pornit"),
+                    "Stopped": self._tr("stopped", "Stopped", "Oprit"),
+                    "Disabled": self._tr("disabled", "Disabled", "Dezactivat"),
                 },
             )
             self._loaded_sections["services"] = True
         finally:
             self._building_services_table = False
 
-    def refresh_packages(self, update_title_only=False):
+    def refresh_packages(self, update_title_only: bool = False):
         self.package_total_count = count_installed_packages()
         if not update_title_only:
             self.package_rows = list_installed_packages(limit=300, search="")
             self.packages_tab.populate(self.package_rows)
             self._loaded_sections["packages"] = True
         self.retranslate_ui()
-        self.set_activity(self.i18n.t("showing_installed_packages"), busy=False)
+        self.set_activity(self._tr("showing_installed_packages", "Showing installed packages", "Se afișează pachetele instalate"), busy=False)
 
     def show_upgradable_packages(self):
         self.package_rows = list_upgradable_packages(limit=300)
         self.packages_tab.populate(self.package_rows)
         self._loaded_sections["packages"] = True
-        self.set_activity(self.i18n.t("showing_upgradable_packages"), busy=False)
+        self.set_activity(self._tr("showing_upgradable_packages", "Showing upgradable packages", "Se afișează pachetele actualizabile"), busy=False)
 
-    def search_packages(self, query):
+    def search_packages(self, query: str):
         self.package_rows = list_installed_packages(limit=300, search=query)
         self.packages_tab.populate(self.package_rows)
         self._loaded_sections["packages"] = True
-        query_label = query or self.i18n.t("packages")
-        self.set_activity(self.i18n.t("search_results_for", query=query_label), busy=False)
+        query_label = query or self._tr("packages", "Packages", "Pachete")
+        self.set_activity(self._tr("search_results_for", "Search results for: {query}", "Rezultate pentru: {query}", query=query_label), busy=False)
 
-    def remove_selected_package(self, package_name):
+    def remove_selected_package(self, package_name: str):
         answer = QMessageBox.question(
             self,
             "Confirm",
-            self.i18n.t("remove_package_confirm", name=package_name),
+            self._tr("remove_package_confirm", "Remove package {name}?", "Elimini pachetul {name}?", name=package_name),
             QMessageBox.Yes | QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
             return
-        self.set_activity(self.i18n.t("removing_package", name=package_name), busy=True)
+
+        self.set_activity(self._tr("removing_package", "Removing package: {name}", "Se elimină pachetul: {name}", name=package_name), busy=True)
         self.append_log(f"\n=== Remove package: {package_name} ===")
         try:
             output = remove_package(package_name)
@@ -788,18 +1214,19 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(exc))
             self.append_log(f"Error: {exc}")
         self.refresh_packages(update_title_only=False)
-        self.set_activity(self.i18n.t("ready"), busy=False)
+        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
 
-    def purge_selected_package(self, package_name):
+    def purge_selected_package(self, package_name: str):
         answer = QMessageBox.question(
             self,
             "Confirm",
-            self.i18n.t("purge_package_confirm", name=package_name),
+            self._tr("purge_package_confirm", "Purge package {name}?", "Elimini complet pachetul {name}?", name=package_name),
             QMessageBox.Yes | QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
             return
-        self.set_activity(self.i18n.t("removing_package", name=package_name), busy=True)
+
+        self.set_activity(self._tr("removing_package", "Removing package: {name}", "Se elimină pachetul: {name}", name=package_name), busy=True)
         self.append_log(f"\n=== Purge package: {package_name} ===")
         try:
             output = purge_package(package_name)
@@ -808,7 +1235,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(exc))
             self.append_log(f"Error: {exc}")
         self.refresh_packages(update_title_only=False)
-        self.set_activity(self.i18n.t("ready"), busy=False)
+        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
 
     def refresh_cleaner_targets(self):
         self.cleaner_tab.targets.clear()
@@ -818,18 +1245,20 @@ class MainWindow(QMainWindow):
     def clean_selected_target(self):
         current = self.cleaner_tab.targets.currentItem()
         if current is None:
-            QMessageBox.warning(self, "Warning", self.i18n.t("warning_select_action"))
+            QMessageBox.warning(self, "Warning", self._tr("warning_select_action", "Please select an action first.", "Selectează mai întâi o acțiune."))
             return
+
         name = current.text()
         command = clean_target(name)
         self.cleaner_overlay = ActivityOverlay(
             self,
-            self.i18n.t("cleaning_label", name=name),
-            self.i18n.t("please_wait"),
+            self._tr("cleaning_label", "Cleaning: {name}", "Se curăță: {name}", name=name),
+            self._tr("please_wait", "Please wait...", "Te rog așteaptă..."),
         )
         self.cleaner_overlay.sync_to_parent()
         self.cleaner_overlay.show_overlay()
         QApplication.processEvents()
+
         self.cleaner_worker = CleanerWorker(command)
         self.cleaner_worker.finished_signal.connect(self.cleaner_finished)
         self.cleaner_worker.error_signal.connect(self.cleaner_error)
@@ -841,59 +1270,70 @@ class MainWindow(QMainWindow):
             self.cleaner_overlay.deleteLater()
             self.cleaner_overlay = None
         self.refresh_all()
-        self.notify(self.i18n.t("toast_cleaner_done"))
+        self.notify(self._tr("toast_cleaner_done", "Cleaner finished.", "Curățarea s-a încheiat."))
 
-    def cleaner_error(self, message):
+    def cleaner_error(self, message: str):
         if self.cleaner_overlay is not None:
             self.cleaner_overlay.hide_overlay()
             self.cleaner_overlay.deleteLater()
             self.cleaner_overlay = None
         QMessageBox.critical(self, "Error", message)
 
-    def on_startup_enabled_changed(self, path, enabled):
+    def on_startup_enabled_changed(self, path: str, enabled: bool):
         if self._building_startup_table:
             return
         try:
             set_startup_enabled(path, enabled)
-            state = self.i18n.t("yes") if enabled else self.i18n.t("no")
+            state = self._tr("yes", "Yes", "Da") if enabled else self._tr("no", "No", "Nu")
             self.append_log(f"Startup entry {path} {state}.")
-            self.set_activity(self.i18n.t("startup_updated", path=path), busy=False)
+            self.set_activity(self._tr("startup_updated", "Startup entry updated: {path}", "Intrare de pornire actualizată: {path}", path=path), busy=False)
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
         self.refresh_startup_apps()
 
-    def on_service_state_changed(self, service_name, desired_state):
+    def on_service_state_changed(self, service_name: str, desired_state: str):
         if self._building_services_table:
             return
         try:
             desired_label = {
-                "Running": self.i18n.t("running"),
-                "Stopped": self.i18n.t("stopped"),
-                "Disabled": self.i18n.t("disabled"),
+                "Running": self._tr("running", "Running", "Pornit"),
+                "Stopped": self._tr("stopped", "Stopped", "Oprit"),
+                "Disabled": self._tr("disabled", "Disabled", "Dezactivat"),
             }.get(desired_state, desired_state)
-            self.set_activity(self.i18n.t("service_changing", name=service_name, state=desired_label), busy=True)
+            self.set_activity(
+                self._tr(
+                    "service_changing",
+                    "Changing service {name} to {state}",
+                    "Se schimbă serviciul {name} la {state}",
+                    name=service_name,
+                    state=desired_label,
+                ),
+                busy=True,
+            )
             set_service_state(service_name, desired_state)
             self.append_log(f"Service {service_name} -> {desired_state}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
             self.append_log(f"Error: {exc}")
         self.refresh_services()
-        self.set_activity(self.i18n.t("ready"), busy=False)
+        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
 
     def start_full_maintenance(self):
         if self.worker is not None and self.worker.isRunning():
-            QMessageBox.information(self, "Info", self.i18n.t("maintenance_running"))
+            QMessageBox.information(self, "Info", self._tr("maintenance_running", "Maintenance is already running.", "Mentenanța rulează deja."))
             return
+
         self.maintenance_had_error = False
         self.maintenance_tab.progress.setValue(0)
         self.maintenance_tab.log_box.clear()
-        self.maintenance_tab.step_label.setText(self.i18n.t("maintenance_starting"))
-        self.maintenance_tab.eta_label.setText(self.i18n.t("eta_waiting"))
+        self.maintenance_tab.step_label.setText(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."))
+        self.maintenance_tab.eta_label.setText(self._tr("eta_waiting", "ETA: waiting", "ETA: în așteptare"))
         self.quick_full_btn.setEnabled(False)
         self.maintenance_tab.full_btn.setEnabled(False)
-        self.set_activity(self.i18n.t("maintenance_starting"), busy=True)
+        self.set_activity(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."), busy=True)
         self.append_log("\n=== Full system maintenance ===")
         self.append_maintenance_log("=== Full system maintenance ===")
+
         self.worker = MaintenanceWorker(self.i18n)
         self.worker.log_signal.connect(self.append_log)
         self.worker.log_signal.connect(self.append_maintenance_log)
@@ -903,10 +1343,10 @@ class MainWindow(QMainWindow):
         self.worker.finished_signal.connect(self.maintenance_finished)
         self.worker.start()
 
-    def update_maintenance_progress(self, value):
+    def update_maintenance_progress(self, value: int):
         self.maintenance_tab.progress.setValue(value)
 
-    def on_maintenance_error(self, message):
+    def on_maintenance_error(self, message: str):
         self.maintenance_had_error = True
         self.append_log(f"Error: {message}")
         self.append_maintenance_log(f"Error: {message}")
@@ -914,26 +1354,40 @@ class MainWindow(QMainWindow):
 
     def maintenance_finished(self):
         if not self.maintenance_had_error:
-            self.append_log(self.i18n.t("maintenance_finished"))
-            self.append_maintenance_log(self.i18n.t("maintenance_finished"))
+            self.append_log(self._tr("maintenance_finished", "Maintenance finished.", "Mentenanța s-a încheiat."))
+            self.append_maintenance_log(self._tr("maintenance_finished", "Maintenance finished.", "Mentenanța s-a încheiat."))
             self.maintenance_tab.progress.setValue(100)
-            self.notify(self.i18n.t("maintenance_finished"))
-            self.set_activity(self.i18n.t("maintenance_finished_success_status"), busy=False)
+            self.notify(self._tr("maintenance_finished", "Maintenance finished.", "Mentenanța s-a încheiat."))
+            self.set_activity(
+                self._tr(
+                    "maintenance_finished_success_status",
+                    "Maintenance finished successfully",
+                    "Mentenanța s-a încheiat cu succes",
+                ),
+                busy=False,
+            )
         else:
-            self.append_log(self.i18n.t("maintenance_finished_errors"))
-            self.append_maintenance_log(self.i18n.t("maintenance_finished_errors"))
-            self.set_activity(self.i18n.t("maintenance_finished_error_status"), busy=False)
+            self.append_log(self._tr("maintenance_finished_errors", "Maintenance finished with errors.", "Mentenanța s-a încheiat cu erori."))
+            self.append_maintenance_log(self._tr("maintenance_finished_errors", "Maintenance finished with errors.", "Mentenanța s-a încheiat cu erori."))
+            self.set_activity(
+                self._tr(
+                    "maintenance_finished_error_status",
+                    "Maintenance finished with errors",
+                    "Mentenanța s-a încheiat cu erori",
+                ),
+                busy=False,
+            )
         self.quick_full_btn.setEnabled(True)
         self.maintenance_tab.full_btn.setEnabled(True)
         self.refresh_all()
 
-    def refresh_installer_catalog(self, query=""):
+    def refresh_installer_catalog(self, query: str = ""):
         data = apps_for_display(query)
         self.installer_tab.populate(data)
         self._loaded_sections["installer"] = True
         self.retranslate_ui()
 
-    def on_installer_source_changed(self, app_id, source):
+    def on_installer_source_changed(self, app_id: str, source: str):
         card = self.installer_tab.cards.get(app_id)
         if card is not None:
             card.app["source"] = source
@@ -941,65 +1395,65 @@ class MainWindow(QMainWindow):
     def install_selected_apps(self):
         selection = self.installer_tab.selected_apps()
         if not selection:
-            self.notify(self.i18n.t("installer_nothing_selected"))
+            self.notify(self._tr("installer_nothing_selected", "No application selected.", "Nu a fost selectată nicio aplicație."))
             return
-        self._start_installer_job(selection, self.i18n.t("installer_installing_selected"), mode="install")
+        self._start_installer_job(selection, self._tr("installer_installing_selected", "Installing selected applications...", "Se instalează aplicațiile selectate..."), mode="install")
 
     def remove_selected_apps(self):
         selection = self.installer_tab.selected_apps()
         if not selection:
-            self.notify(self.i18n.t("installer_nothing_selected"))
+            self.notify(self._tr("installer_nothing_selected", "No application selected.", "Nu a fost selectată nicio aplicație."))
             return
-        self._start_installer_job(selection, self.i18n.t("installer_removing_selected"), mode="remove")
+        self._start_installer_job(selection, self._tr("installer_removing_selected", "Removing selected applications...", "Se elimină aplicațiile selectate..."), mode="remove")
 
     def update_selected_apps(self):
         selection = self.installer_tab.selected_apps()
         if not selection:
-            self.notify(self.i18n.t("installer_nothing_selected"))
+            self.notify(self._tr("installer_nothing_selected", "No application selected.", "Nu a fost selectată nicio aplicație."))
             return
-        self._start_installer_job(selection, self.i18n.t("installer_updating_selected"), mode="update")
+        self._start_installer_job(selection, self._tr("installer_updating_selected", "Updating selected applications...", "Se actualizează aplicațiile selectate..."), mode="update")
 
-    def install_one_app(self, app_id):
+    def install_one_app(self, app_id: str):
         card = self.installer_tab.cards.get(app_id)
         if card is None:
             return
         app = dict(card.app)
         app["source"] = "flatpak" if card.flatpak_radio.isChecked() else "native"
-        self._start_installer_job([app], self.i18n.t("installer_installing_one", name=app["name"]), mode="install")
+        self._start_installer_job([app], self._tr("installer_installing_one", "Installing: {name}", "Se instalează: {name}", name=app["name"]), mode="install")
 
-    def remove_one_app(self, app_id):
+    def remove_one_app(self, app_id: str):
         card = self.installer_tab.cards.get(app_id)
         if card is None:
             return
         app = dict(card.app)
         app["source"] = "flatpak" if card.flatpak_radio.isChecked() else "native"
-        self._start_installer_job([app], self.i18n.t("installer_removing_one", name=app["name"]), mode="remove")
+        self._start_installer_job([app], self._tr("installer_removing_one", "Removing: {name}", "Se elimină: {name}", name=app["name"]), mode="remove")
 
-    def update_one_app(self, app_id):
+    def update_one_app(self, app_id: str):
         card = self.installer_tab.cards.get(app_id)
         if card is None:
             return
         app = dict(card.app)
         app["source"] = "flatpak" if card.flatpak_radio.isChecked() else "native"
-        self._start_installer_job([app], self.i18n.t("installer_updating_one", name=app["name"]), mode="update")
+        self._start_installer_job([app], self._tr("installer_updating_one", "Updating: {name}", "Se actualizează: {name}", name=app["name"]), mode="update")
 
-    def _start_installer_job(self, selection, overlay_text, mode="install"):
+    def _start_installer_job(self, selection: list[dict], overlay_text: str, mode: str = "install"):
         if self.installer_worker is not None and self.installer_worker.isRunning():
-            self.notify(self.i18n.t("maintenance_running"))
+            self.notify(self._tr("maintenance_running", "Another background job is already running.", "O altă operațiune rulează deja."))
             return
-        self.show_busy_overlay(overlay_text, self.i18n.t("please_wait"))
+        self.show_busy_overlay(overlay_text, self._tr("please_wait", "Please wait...", "Te rog așteaptă..."))
         self.installer_worker = InstallerWorker(selection, mode=mode)
         self.installer_worker.output_signal.connect(self.on_installer_output)
         self.installer_worker.error_signal.connect(self.on_installer_error)
         self.installer_worker.finished_signal.connect(self.on_installer_finished)
         self.installer_worker.start()
 
-    def on_installer_output(self, output):
+    def on_installer_output(self, output: str):
         if output:
             self.append_log("\n=== Installer ===")
             self.append_log(output)
 
-    def on_installer_error(self, message):
+    def on_installer_error(self, message: str):
         QMessageBox.critical(self, "Error", message)
         self.append_log(f"Installer error: {message}")
 
@@ -1013,25 +1467,82 @@ class MainWindow(QMainWindow):
         self.refresh_cleaner_targets()
         self._loaded_sections["cleaner"] = True
         QApplication.processEvents()
-        self.notify(self.i18n.t("installer_done"))
+        self.notify(self._tr("installer_done", "Installer action completed.", "Operațiunea Installer s-a încheiat."))
 
     def remove_old_kernels(self):
         commands = removal_commands_for_suggested()
         if not commands:
-            QMessageBox.information(self, "Info", self.i18n.t("no_old_kernels"))
+            QMessageBox.information(self, "Info", self._tr("no_old_kernels", "No old kernels found.", "Nu au fost găsite kernel-uri vechi."))
             return
+
         answer = QMessageBox.question(
             self,
             "Confirm",
-            self.i18n.t("confirm_remove_kernels"),
+            self._tr("confirm_remove_kernels", "Remove suggested old kernels?", "Elimini kernel-urile vechi sugerate?"),
             QMessageBox.Yes | QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
             return
-        self.set_activity(self.i18n.t("cleaning_kernels"), busy=True)
+
+        self.set_activity(self._tr("cleaning_kernels", "Removing old kernels...", "Se elimină kernel-urile vechi..."), busy=True)
         self.append_log("\n=== Kernel cleanup ===")
         code = self.runner.run(commands, requires_root=True)
         if code != 0:
-            QMessageBox.critical(self, "Error", f"{self.i18n.t('action_failed')} {code}")
+            QMessageBox.critical(self, "Error", f"{self._tr('action_failed', 'Action failed with exit code:')} {code}")
         self.refresh_kernel_analysis()
-        self.set_activity(self.i18n.t("ready"), busy=False)
+        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
+
+    def refresh_about_tab(self):
+        self.about_tab.set_current_version(APP_VERSION)
+        self.about_tab.set_texts(self._about_texts())
+
+        if self.release_error:
+            self.about_tab.set_error(self.release_error)
+        elif self.release_info is not None:
+            self.about_tab.set_release_info(self.release_info)
+        else:
+            self.about_tab.set_checking()
+
+        self._loaded_sections["about"] = True
+
+    def check_latest_release(self):
+        if self.release_worker is not None and self.release_worker.isRunning():
+            return
+
+        self.release_error = ""
+        self.about_tab.set_checking()
+        self.set_status(self._tr("about_checking", "Checking GitHub releases...", "Se verifică release-urile GitHub..."))
+
+        self.release_worker = ReleaseCheckWorker(LATEST_RELEASE_API_URL, APP_VERSION)
+        self.release_worker.result_signal.connect(self.on_release_check_success)
+        self.release_worker.error_signal.connect(self.on_release_check_error)
+        self.release_worker.finished.connect(self.on_release_check_finished)
+        self.release_worker.start()
+
+    def on_release_check_success(self, info: dict):
+        self.release_info = info or {}
+        self.release_error = ""
+        self.refresh_about_tab()
+
+        if self.release_info.get("has_update"):
+            latest_version = str(self.release_info.get("latest_version") or "").strip()
+            if latest_version and latest_version != self._update_notified_version:
+                self.notify(
+                    self._tr(
+                        "about_update_available",
+                        "A newer version is available: {version}.",
+                        "Este disponibilă o versiune mai nouă: {version}.",
+                        version=latest_version,
+                    )
+                )
+                self._update_notified_version = latest_version
+        else:
+            self.set_status(self._tr("about_up_to_date", "You are using the latest available version.", "Folosești deja cea mai nouă versiune disponibilă."))
+
+    def on_release_check_error(self, message: str):
+        self.release_error = message or self._tr("about_unavailable", "Could not check GitHub releases right now.", "Release-urile GitHub nu pot fi verificate acum.")
+        self.refresh_about_tab()
+        self.set_status(self.release_error)
+
+    def on_release_check_finished(self):
+        self.release_worker = None
