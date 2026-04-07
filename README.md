@@ -37,19 +37,20 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 
 ## UI
 ### Dashboard
-<img width="1460" height="912" alt="v3 6-1" src="https://github.com/user-attachments/assets/3206f3a8-9d19-4a4c-ba38-09cf4634a5e3" />
+<img width="1460" height="984" alt="v4 0-1" src="https://github.com/user-attachments/assets/38eacb07-dc99-405f-bca0-3b5328ff47b1" />
 
 ### Maintenance
-<img width="1460" height="912" alt="v3 6-2" src="https://github.com/user-attachments/assets/00803c70-55b9-4bff-9dfe-bbb5b4a5d40c" />
+<img width="1460" height="984" alt="v4 0-2" src="https://github.com/user-attachments/assets/cc783c5b-e9ed-4903-9838-a16fb5e36619" />
 
 ### Disk
-<img width="1460" height="912" alt="v3 6-3" src="https://github.com/user-attachments/assets/caf95745-9d79-48be-af58-fa70e396a56a" />
+<img width="1460" height="984" alt="v4 0-3" src="https://github.com/user-attachments/assets/c3717ec8-fc7c-453d-91ca-e193639a46e6" />
+<img width="1460" height="984" alt="v4 0-3 1" src="https://github.com/user-attachments/assets/cc9b5a9c-99e2-4ed1-b6fb-536c5a22e5fb" />
 
 ### Kernel
-<img width="1460" height="912" alt="v3 6-4" src="https://github.com/user-attachments/assets/a7bc40ee-075d-4888-943e-93941da8b7cf" />
+<img width="1460" height="984" alt="v4 0-4" src="https://github.com/user-attachments/assets/3f01ff3d-eee7-4d40-88fd-8cf4ac21b1d7" />
 
 ### Cleaner
-<img width="1460" height="912" alt="v3 6-5" src="https://github.com/user-attachments/assets/1d9b9d8e-f3e2-4efc-bccd-3fc466bfb30f" />
+<img width="1460" height="984" alt="v4 0-5" src="https://github.com/user-attachments/assets/0ee51d72-df62-4677-a2aa-0e5409cd3a1d" />
 
 🧹 Improved Cleaner\
 
@@ -63,20 +64,20 @@ TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
 ✔ Debian/Ubuntu → apt autoremove\
 
 ### Startup
-<img width="1460" height="912" alt="v3 6-6" src="https://github.com/user-attachments/assets/afe15be2-c5d0-48d4-8831-74667f7464c8" />
+<img width="1460" height="984" alt="v4 0-6" src="https://github.com/user-attachments/assets/1b843bee-1f66-4ebf-aba6-82de77318912" />
 
 ### Services
-<img width="1460" height="912" alt="v3 6-7" src="https://github.com/user-attachments/assets/74fc3118-d9ec-474f-a6ef-a3c9414a910f" />
+<img width="1460" height="984" alt="v4 0-7" src="https://github.com/user-attachments/assets/5f9a5f39-adb8-4f65-a68c-9979ec77ccda" />
 
 ### Packages
-<img width="1460" height="912" alt="v3 6-8" src="https://github.com/user-attachments/assets/11c97386-4e99-4fe2-a4b1-39acef0852e5" />
+<img width="1460" height="984" alt="v4 0-8" src="https://github.com/user-attachments/assets/623aed24-9731-430f-8306-7abe85bbd3e1" />
 
 ### Installer
-<img width="1460" height="912" alt="v3 6-9" src="https://github.com/user-attachments/assets/92a59466-7bd7-448e-bf07-00c8a47cd47d" />
+<img width="1460" height="984" alt="v4 0-9" src="https://github.com/user-attachments/assets/94526409-df32-426a-944d-ca782c75095c" />
+<img width="1460" height="984" alt="v4 0-9 1" src="https://github.com/user-attachments/assets/09cb404c-a020-4243-80d0-1260ec0e07d4" />
 
 ### About
-<img width="1460" height="912" alt="v3 6-10" src="https://github.com/user-attachments/assets/57025642-5a71-4abe-8917-d97b4ef24b1a" />
-
+<img width="1460" height="984" alt="v4 0-10" src="https://github.com/user-attachments/assets/0b127ac8-f03b-4ce8-b9af-09230b818a17" />
 
 🛒 Fully integrated App Store\
 Install apps by category (Browsers, Development, Multimedia, System Tools)\
@@ -107,12 +108,15 @@ Eliminates the need to restart the application\
 Accurate real-time visual status\
 
 🎨 Improved UI\
-✔ Checkboxes visible in dark mode (white / light green)\
+✔ Dark Mode / Light Mode\
 ✔ Clearer interface for application selection\
 ✔ Dedicated buttons per application\
 
 Language: [En]/[Ro]
 <img width="1460" height="912" alt="switching-language" src="https://github.com/user-attachments/assets/3f5de768-2961-46e1-b519-1e3f811c98c0" />
+
+Dark Mode / Light Mode
+<img width="1460" height="984" alt="v4 0-1 1" src="https://github.com/user-attachments/assets/9ab07eb9-399f-4aff-b0dc-a24cc4de0e54" />
 
 🔐 Enterprise Architecture
 
