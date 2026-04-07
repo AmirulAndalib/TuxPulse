@@ -174,25 +174,6 @@ class InstallerWorker(QThread):
             self.finished_signal.emit()
 
 
-class InstallerCatalogWorker(QThread):
-    result_signal = pyqtSignal(dict, str)
-    error_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal()
-
-    def __init__(self, query: str = ""):
-        super().__init__()
-        self.query = query
-
-    def run(self):
-        try:
-            data = apps_for_display(self.query)
-            self.result_signal.emit(data or {}, self.query)
-        except Exception as exc:
-            self.error_signal.emit(str(exc))
-        finally:
-            self.finished_signal.emit()
-
-
 class ReleaseCheckWorker(QThread):
     result_signal = pyqtSignal(dict)
     error_signal = pyqtSignal(str)
@@ -430,17 +411,8 @@ class MainWindow(QMainWindow):
         self.overlay = None
         self.cleaner_overlay = None
         self.disk_overlay = None
-        self.installer_overlay = None
         self.disk_worker = None
-        self.installer_catalog_worker = None
         self._disk_refresh_requested = False
-        self._installer_refresh_requested = False
-        self._installer_pending_query = ""
-        self._installer_active_query = ""
-        self._installer_search_timer = QTimer(self)
-        self._installer_search_timer.setSingleShot(True)
-        self._installer_search_timer.setInterval(260)
-        self._installer_search_timer.timeout.connect(self._run_pending_installer_refresh)
         self._blur = None
 
         self.maintenance_had_error = False
@@ -600,7 +572,7 @@ class MainWindow(QMainWindow):
         self.packages_tab.search_requested.connect(self.search_packages)
         self.packages_tab.remove_requested.connect(self.remove_selected_package)
         self.packages_tab.purge_requested.connect(self.purge_selected_package)
-        self.installer_tab.search_changed.connect(self.schedule_installer_catalog_refresh)
+        self.installer_tab.search_changed.connect(self.refresh_installer_catalog)
         self.installer_tab.install_selected_requested.connect(self.install_selected_apps)
         self.installer_tab.remove_selected_requested.connect(self.remove_selected_apps)
         self.installer_tab.update_selected_requested.connect(self.update_selected_apps)
@@ -930,8 +902,6 @@ class MainWindow(QMainWindow):
             self.cleaner_overlay.sync_to_parent()
         if self.disk_overlay is not None and self.disk_overlay.isVisible():
             self.disk_overlay.sync_to_parent()
-        if self.installer_overlay is not None and self.installer_overlay.isVisible():
-            self.installer_overlay.sync_to_parent()
         super().resizeEvent(event)
 
     def initial_load(self):
@@ -1757,101 +1727,11 @@ class MainWindow(QMainWindow):
         self.maintenance_tab.full_btn.setEnabled(True)
         self.refresh_all()
 
-    def show_installer_overlay(self, detail: str | None = None):
-        message = self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații...")
-        detail_text = detail or self._tr(
-            "installer_loading_detail",
-            "Checking installed apps and available updates in the background.",
-            "Se verifică aplicațiile instalate și actualizările disponibile în fundal.",
-        )
-
-        if self.installer_overlay is None:
-            self.installer_overlay = ActivityOverlay(self.installer_tab, message, detail_text)
-        else:
-            self.installer_overlay.set_text(message, detail_text)
-
-        self.installer_overlay.sync_to_parent()
-        self.installer_overlay.show_overlay()
-        self._set_installer_controls_enabled(False)
-
-    def update_installer_overlay(self, detail: str):
-        if self.installer_overlay is not None:
-            self.installer_overlay.set_text(
-                self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații..."),
-                detail,
-            )
-            self.installer_overlay.sync_to_parent()
-
-    def hide_installer_overlay(self):
-        self._set_installer_controls_enabled(True)
-        if self.installer_overlay is not None:
-            self.installer_overlay.hide_overlay()
-            self.installer_overlay.deleteLater()
-            self.installer_overlay = None
-
-    def _set_installer_controls_enabled(self, enabled: bool):
-        self.installer_tab.search.setEnabled(enabled)
-        self.installer_tab.install_selected_btn.setEnabled(enabled)
-        self.installer_tab.remove_selected_btn.setEnabled(enabled)
-        self.installer_tab.update_selected_btn.setEnabled(enabled)
-        self.installer_tab.scroll.setEnabled(enabled)
-
-    def schedule_installer_catalog_refresh(self, query: str = ""):
-        self._installer_pending_query = query
-        self._installer_search_timer.start()
-
-    def _run_pending_installer_refresh(self):
-        self.refresh_installer_catalog(self._installer_pending_query)
-
-    def _apply_installer_catalog_result(self, data: dict, query: str):
-        self._installer_active_query = query
+    def refresh_installer_catalog(self, query: str = ""):
+        data = apps_for_display(query)
         self.installer_tab.populate(data)
         self._loaded_sections["installer"] = True
         self.retranslate_ui()
-
-    def _on_installer_catalog_error(self, message: str):
-        QMessageBox.critical(self, "Error", message)
-        self.append_log(f"Installer catalog error: {message}")
-
-    def _on_installer_catalog_finished(self):
-        active_query = self._installer_active_query
-        pending_query = self._installer_pending_query
-        self.hide_installer_overlay()
-        self.installer_catalog_worker = None
-        self.set_status(self._tr("ready", "Ready", "Gata"))
-
-        if self._installer_refresh_requested or pending_query != active_query:
-            self._installer_refresh_requested = False
-            self._installer_pending_query = pending_query
-            QTimer.singleShot(0, self._run_pending_installer_refresh)
-
-    def refresh_installer_catalog(self, query: str = ""):
-        if self._installer_search_timer.isActive():
-            self._installer_search_timer.stop()
-
-        self._installer_pending_query = query
-
-        if self.installer_catalog_worker is not None and self.installer_catalog_worker.isRunning():
-            self._installer_refresh_requested = True
-            self.update_installer_overlay(
-                self._tr(
-                    "installer_refresh_queued",
-                    "A new installer refresh will start as soon as the current one finishes.",
-                    "O nouă actualizare a listei Install va porni imediat ce se termină cea curentă.",
-                )
-            )
-            return
-
-        self._installer_refresh_requested = False
-        self._installer_active_query = query
-        self.show_installer_overlay()
-        self.set_status(self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații..."))
-
-        self.installer_catalog_worker = InstallerCatalogWorker(query)
-        self.installer_catalog_worker.result_signal.connect(self._apply_installer_catalog_result)
-        self.installer_catalog_worker.error_signal.connect(self._on_installer_catalog_error)
-        self.installer_catalog_worker.finished_signal.connect(self._on_installer_catalog_finished)
-        self.installer_catalog_worker.start()
 
     def on_installer_source_changed(self, app_id: str, source: str):
         card = self.installer_tab.cards.get(app_id)
@@ -1924,7 +1804,6 @@ class MainWindow(QMainWindow):
         self.append_log(f"Installer error: {message}")
 
     def on_installer_finished(self):
-        self.installer_worker = None
         self.hide_busy_overlay()
         self.refresh_installer_catalog(self.installer_tab.search.text())
         if self._loaded_sections["packages"]:

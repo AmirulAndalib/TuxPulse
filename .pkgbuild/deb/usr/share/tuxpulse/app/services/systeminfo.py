@@ -23,9 +23,7 @@ def build_system_summary():
         f'Boot time: {boot_time}',
         f'CPU cores (logical): {psutil.cpu_count(logical=True)}',
         f'RAM total: {total_ram_gb:.2f} GiB',
-        f'RAM used: {psutil.virtual_memory().percent:.1f}%',
         f'Root usage: {disk.percent:.1f}% ({disk.used / (1024 ** 3):.2f} / {disk.total / (1024 ** 3):.2f} GiB)',
-        f'Python: {platform.python_version()}',
         f'Home free space: {shutil.disk_usage(os.path.expanduser("~")).free / (1024 ** 3):.2f} GiB',
     ]
     return '\n'.join(lines)

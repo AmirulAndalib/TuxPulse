@@ -8,6 +8,7 @@ class CleanerTab(QWidget):
         self.title = QLabel()
         self.title.setObjectName('SectionTitle')
         self.targets = QListWidget()
+        self.targets.setObjectName('CleanerTargets')
         self.clean_btn = QPushButton()
         layout.addWidget(self.title)
         layout.addWidget(self.targets, 1)

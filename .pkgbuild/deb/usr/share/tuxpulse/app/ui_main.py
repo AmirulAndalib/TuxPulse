@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import platform
 import re
+import textwrap
 from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -21,6 +22,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStyle,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -30,7 +32,7 @@ from core.commands import build_actions
 from core.i18n import I18N
 from core.runner import CommandRunner
 from services.cleaner import clean_target, get_cleaner_targets, run_clean_command
-from services.disk_analyzer import get_home_largest_files, get_home_top_directories, get_root_usage
+from services.disk_analyzer import build_disk_analysis
 from services.installer import apps_for_display, install_apps, remove_apps, update_apps
 from services.kernels import get_kernel_report, removal_commands_for_suggested
 from services.monitor import MonitorService
@@ -100,10 +102,11 @@ def _is_newer_version(remote_version: str, local_version: str) -> bool:
     return tuple(remote_key) > tuple(local_key)
 
 
-def _safe_html_links(links: list[tuple[str, str]]) -> str:
+def _safe_html_links(links: list[tuple[str, str]], color: str | None = None) -> str:
     rows = []
+    style = f' style="color:{escape(color)}; text-decoration:none;"' if color else ''
     for label, url in links:
-        rows.append(f'• <a href="{escape(url)}">{escape(label)}</a>')
+        rows.append(f'• <a href="{escape(url)}"{style}>{escape(label)}</a>')
     return "<br>".join(rows)
 
 
@@ -171,6 +174,25 @@ class InstallerWorker(QThread):
             self.finished_signal.emit()
 
 
+class InstallerCatalogWorker(QThread):
+    result_signal = pyqtSignal(dict, str)
+    error_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+
+    def __init__(self, query: str = ""):
+        super().__init__()
+        self.query = query
+
+    def run(self):
+        try:
+            data = apps_for_display(self.query)
+            self.result_signal.emit(data or {}, self.query)
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
+        finally:
+            self.finished_signal.emit()
+
+
 class ReleaseCheckWorker(QThread):
     result_signal = pyqtSignal(dict)
     error_signal = pyqtSignal(str)
@@ -214,6 +236,22 @@ class ReleaseCheckWorker(QThread):
             self.error_signal.emit(f"GitHub connection error: {reason}")
         except Exception as exc:
             self.error_signal.emit(str(exc))
+
+
+class DiskAnalysisWorker(QThread):
+    progress_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+
+    def run(self):
+        try:
+            result = build_disk_analysis(limit_dirs=8, limit_files=20, progress_cb=self.progress_signal.emit)
+            self.result_signal.emit(result)
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
+        finally:
+            self.finished_signal.emit()
 
 
 class AboutTab(QWidget):
@@ -361,7 +399,7 @@ class AboutTab(QWidget):
         if published_date:
             label = f"{label} ({escape(published_on)} {escape(published_date)})"
         if release_url:
-            label = f'<a href="{escape(release_url)}">{label}</a>'
+            label = f'<a href="{escape(release_url)}" style="color:{escape(self._texts.get("link_color", "#2563eb"))}; text-decoration:none;">{label}</a>'
         self.latest_version_label.setText(f"{escape(latest_prefix)}: {label}")
 
         if self._release_info.get("has_update"):
@@ -391,12 +429,25 @@ class MainWindow(QMainWindow):
 
         self.overlay = None
         self.cleaner_overlay = None
+        self.disk_overlay = None
+        self.installer_overlay = None
+        self.disk_worker = None
+        self.installer_catalog_worker = None
+        self._disk_refresh_requested = False
+        self._installer_refresh_requested = False
+        self._installer_pending_query = ""
+        self._installer_active_query = ""
+        self._installer_search_timer = QTimer(self)
+        self._installer_search_timer.setSingleShot(True)
+        self._installer_search_timer.setInterval(260)
+        self._installer_search_timer.timeout.connect(self._run_pending_installer_refresh)
         self._blur = None
 
         self.maintenance_had_error = False
         self.release_info = None
         self.release_error = ""
         self._update_notified_version = ""
+        self.theme_mode = "dark"
 
         self.startup_rows = []
         self.service_rows = []
@@ -421,7 +472,7 @@ class MainWindow(QMainWindow):
         self._setup_layout()
         self._connect_signals()
         self.apply_style()
-        self.update_action_list()
+        self.update_section_list()
         self.retranslate_ui()
 
         self.timer = QTimer(self)
@@ -458,6 +509,7 @@ class MainWindow(QMainWindow):
 
         self.distribution_label = QLabel()
         self.distribution_label.setObjectName("SectionTitle")
+        self.distribution_label.setWordWrap(True)
 
         language_row = QHBoxLayout()
         self.language_label = QLabel()
@@ -467,14 +519,12 @@ class MainWindow(QMainWindow):
         language_row.addWidget(self.language_label)
         language_row.addWidget(self.language_combo)
 
-        self.actions_label = QLabel()
-        self.actions_label.setObjectName("SectionTitle")
-        self.action_list = QListWidget()
-        self.action_list.setObjectName("ActionList")
+        self.sections_label = QLabel()
+        self.sections_label.setObjectName("SectionTitle")
+        self.section_list = QListWidget()
+        self.section_list.setObjectName("SectionList")
 
-        self.run_btn = QPushButton()
         self.refresh_btn = QPushButton()
-        self.quick_full_btn = QPushButton()
 
         self.activity_label = QLabel()
         self.activity_label.setObjectName("Subtitle")
@@ -485,11 +535,9 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.subtitle_label)
         sidebar_layout.addWidget(self.distribution_label)
         sidebar_layout.addLayout(language_row)
-        sidebar_layout.addWidget(self.actions_label)
-        sidebar_layout.addWidget(self.action_list, 1)
-        sidebar_layout.addWidget(self.run_btn)
+        sidebar_layout.addWidget(self.sections_label)
+        sidebar_layout.addWidget(self.section_list, 1)
         sidebar_layout.addWidget(self.refresh_btn)
-        sidebar_layout.addWidget(self.quick_full_btn)
         sidebar_layout.addWidget(self.activity_label)
 
         self.panel = QFrame()
@@ -500,6 +548,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.setObjectName("Tabs")
+        self.tabs.tabBar().hide()
 
         self.dashboard_tab = DashboardTab()
         self.maintenance_tab = MaintenanceTab()
@@ -535,9 +584,8 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         self.language_combo.currentIndexChanged.connect(self.change_language)
-        self.run_btn.clicked.connect(self.run_selected_action)
-        self.refresh_btn.clicked.connect(self.refresh_all)
-        self.quick_full_btn.clicked.connect(self.start_full_maintenance)
+        self.section_list.currentRowChanged.connect(self.on_section_changed)
+        self.refresh_btn.clicked.connect(self.toggle_theme)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
         self.maintenance_tab.full_btn.clicked.connect(self.start_full_maintenance)
@@ -552,7 +600,7 @@ class MainWindow(QMainWindow):
         self.packages_tab.search_requested.connect(self.search_packages)
         self.packages_tab.remove_requested.connect(self.remove_selected_package)
         self.packages_tab.purge_requested.connect(self.purge_selected_package)
-        self.installer_tab.search_changed.connect(self.refresh_installer_catalog)
+        self.installer_tab.search_changed.connect(self.schedule_installer_catalog_refresh)
         self.installer_tab.install_selected_requested.connect(self.install_selected_apps)
         self.installer_tab.remove_selected_requested.connect(self.remove_selected_apps)
         self.installer_tab.update_selected_requested.connect(self.update_selected_apps)
@@ -572,7 +620,11 @@ class MainWindow(QMainWindow):
                 return fallback
         return text
 
+    def _about_link_color(self) -> str:
+        return "#facc15" if self.theme_mode == "dark" else "#2563eb"
+
     def _about_texts(self) -> dict:
+        link_color = self._about_link_color()
         return {
             "title": self._tr("about_title", "About TuxPulse", "Despre TuxPulse"),
             "subtitle": self._tr(
@@ -609,12 +661,14 @@ class MainWindow(QMainWindow):
             "check_updates": self._tr("about_check_updates", "Check again", "Verifică din nou"),
             "project_title": self._tr("about_project_links", "Project links", "Link-uri proiect"),
             "developer_title": self._tr("about_developer_links", "Developer", "Dezvoltator"),
+            "link_color": link_color,
             "project_links_html": _safe_html_links(
                 [
                     (self._tr("about_link_repo", "GitHub repository", "Repository GitHub"), PROJECT_URL),
                     (self._tr("about_link_releases", "Releases page", "Pagina de releases"), PROJECT_RELEASES_URL),
                     (self._tr("about_link_issues", "Issues / bug reports", "Issues / raportare bug-uri"), PROJECT_ISSUES_URL),
-                ]
+                ],
+                color=link_color,
             ),
             "developer_links_html": _safe_html_links(
                 [
@@ -626,110 +680,209 @@ class MainWindow(QMainWindow):
                         self._tr("about_link_linktree", "Linktree", "Linktree"),
                         DEVELOPER_LINKS[1][1],
                     ),
-                ]
+                ],
+                color=link_color,
             ),
         }
 
+    def _theme_button_text(self) -> str:
+        if self.theme_mode == "dark":
+            return self._tr("theme_light", "Light mode", "Mod Light")
+        return self._tr("theme_dark", "Dark mode", "Mod Dark")
+
+    def apply_chart_theme(self):
+        for widget in (
+            getattr(self.dashboard_tab, "cpu_chart", None),
+            getattr(self.dashboard_tab, "ram_chart", None),
+            getattr(self.dashboard_tab, "disk_chart", None),
+            getattr(self.dashboard_tab, "gpu_chart", None),
+            getattr(self.dashboard_tab, "battery_chart", None),
+            getattr(self.dashboard_tab, "net_chart", None),
+            getattr(self.disk_tab, "disk_pie", None),
+            getattr(self.disk_tab, "disk_bar", None),
+            getattr(self.disk_tab, "files_bar", None),
+        ):
+            if widget is not None and hasattr(widget, "set_theme"):
+                widget.set_theme(self.theme_mode)
+
+    def toggle_theme(self):
+        self.theme_mode = "light" if self.theme_mode == "dark" else "dark"
+        self.apply_style()
+        self.apply_chart_theme()
+        self.refresh_about_tab()
+        self.retranslate_ui()
+
     def apply_style(self):
+        dark = {
+            "window_bg": "#0f172a",
+            "panel_bg": "#111827",
+            "panel_border": "#1f2937",
+            "title": "#f8fafc",
+            "text": "#e5e7eb",
+            "muted": "#94a3b8",
+            "input_bg": "#0b1220",
+            "input_border": "#243041",
+            "selection": "#2563eb",
+            "selection_hover": "#1d4ed8",
+            "disabled_bg": "#334155",
+            "disabled_text": "#94a3b8",
+            "header_bg": "#111827",
+            "status_bg": "#0b1220",
+        }
+        light = {
+            "window_bg": "#eef2f7",
+            "panel_bg": "#ffffff",
+            "panel_border": "#cbd5e1",
+            "title": "#0f172a",
+            "text": "#0f172a",
+            "muted": "#475569",
+            "input_bg": "#ffffff",
+            "input_border": "#cbd5e1",
+            "selection": "#2563eb",
+            "selection_hover": "#1d4ed8",
+            "disabled_bg": "#cbd5e1",
+            "disabled_text": "#64748b",
+            "header_bg": "#f8fafc",
+            "status_bg": "#f8fafc",
+        }
+        p = light if self.theme_mode == "light" else dark
         self.setStyleSheet(
-            """
-            QWidget {
-                background: #0f172a;
-                color: #e5e7eb;
+            f"""
+            QWidget {{
+                background: {p['window_bg']};
+                color: {p['text']};
                 font-family: Arial, Helvetica, sans-serif;
                 font-size: 13px;
-            }
-            QFrame#Sidebar, QFrame#Panel, QFrame#InstallerCard {
-                background: #111827;
-                border: 1px solid #1f2937;
+            }}
+            QFrame#Sidebar, QFrame#Panel, QFrame#InstallerCard {{
+                background: {p['panel_bg']};
+                border: 1px solid {p['panel_border']};
                 border-radius: 14px;
-            }
-            QLabel#Title {
+            }}
+            QLabel#Title {{
                 font-size: 28px;
                 font-weight: bold;
-                color: #f8fafc;
-            }
-            QLabel#Subtitle {
-                color: #94a3b8;
-            }
-            QLabel#SectionTitle {
+                color: {p['title']};
+                background: transparent;
+                border: none;
+            }}
+            QLabel#Subtitle, QLabel#SectionTitle {{
+                background: transparent;
+                border: none;
+            }}
+            QLabel#Subtitle {{
+                color: {p['muted']};
+            }}
+            QLabel#SectionTitle {{
                 font-size: 16px;
                 font-weight: bold;
-                color: #f8fafc;
-            }
-            QListWidget, QTextEdit, QTabWidget::pane, QTableWidget, QProgressBar, QLineEdit, QScrollArea {
-                background: #0b1220;
-                border: 1px solid #243041;
+                color: {p['title']};
+            }}
+            QListWidget, QTextEdit, QTabWidget::pane, QTableWidget, QProgressBar, QLineEdit, QScrollArea {{
+                background: {p['input_bg']};
+                border: 1px solid {p['input_border']};
                 border-radius: 10px;
                 padding: 8px;
-            }
-            QComboBox {
-                background-color: #0b1220;
-                color: #e5e7eb;
-                border: 1px solid #243041;
+            }}
+            QComboBox {{
+                background-color: {p['input_bg']};
+                color: {p['text']};
+                border: 1px solid {p['input_border']};
                 border-radius: 8px;
-                padding: 6px 10px;
-                min-height: 22px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #0b1220;
-                color: #e5e7eb;
-                selection-background-color: #2563eb;
-                border: 1px solid #243041;
+                padding: 4px 10px;
+                min-height: 20px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {p['input_bg']};
+                color: {p['text']};
+                selection-background-color: {p['selection']};
+                border: 1px solid {p['input_border']};
                 outline: 0;
-            }
-            QListWidget::item {
-                padding: 10px;
+            }}
+            QListWidget::item {{
+                padding: 8px 10px;
                 margin: 3px 0;
                 border-radius: 8px;
-            }
-            QListWidget::item:selected {
-                background: #2563eb;
+            }}
+            QListWidget::item:selected {{
+                background: {p['selection']};
                 color: white;
-            }
-            QTabBar::tab {
-                background: #0b1220;
-                border: 1px solid #243041;
+            }}
+            QListWidget#SectionList::item {{
+                padding: 10px 10px;
+                margin: 4px 0;
+                border-radius: 10px;
+                border: 1px solid {p['input_border']};
+                background: transparent;
+            }}
+            QListWidget#SectionList::item:selected {{
+                background: {p['selection']};
+                color: white;
+                font-weight: bold;
+                border: 1px solid {p['selection']};
+            }}
+            QListWidget#CleanerTargets::item {{
+                padding: 8px 10px;
+                margin: 3px 0;
+                border-radius: 8px;
+                border: 1px solid {p['input_border']};
+                background: transparent;
+            }}
+            QListWidget#CleanerTargets::item:selected {{
+                background: {p['selection']};
+                color: white;
+                border: 1px solid {p['selection']};
+            }}
+            QTabBar::tab {{
+                background: {p['input_bg']};
+                border: 1px solid {p['input_border']};
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
-                padding: 10px 14px;
+                padding: 8px 12px;
                 margin-right: 4px;
-            }
-            QTabBar::tab:selected {
-                background: #2563eb;
+            }}
+            QTabBar::tab:selected {{
+                background: {p['selection']};
                 color: white;
-            }
-            QPushButton {
+            }}
+            QPushButton {{
                 background: #2563eb;
                 color: white;
                 border: none;
                 border-radius: 10px;
-                min-height: 40px;
+                min-height: 34px;
                 font-weight: bold;
-                padding: 8px 12px;
-            }
-            QPushButton:hover {
-                background: #1d4ed8;
-            }
-            QPushButton:disabled {
-                background: #334155;
-                color: #94a3b8;
-            }
-            QHeaderView::section {
-                background: #111827;
-                color: #e5e7eb;
-                border: 1px solid #243041;
+                padding: 4px 10px;
+            }}
+            QPushButton:hover {{
+                background: {p['selection_hover']};
+            }}
+            QPushButton:disabled {{
+                background: {p['disabled_bg']};
+                color: {p['disabled_text']};
+            }}
+            QPushButton#MaintenanceActionButton {{
+                min-height: 42px;
+                padding: 4px 10px;
+            }}
+            QHeaderView::section {{
+                background: {p['header_bg']};
+                color: {p['text']};
+                border: 1px solid {p['input_border']};
                 padding: 6px;
-            }
-            QProgressBar::chunk {
+            }}
+            QProgressBar::chunk {{
                 background: #22c55e;
                 border-radius: 8px;
-            }
-            QStatusBar {
-                background: #111827;
-                color: #cbd5e1;
-            }
+            }}
+            QStatusBar {{
+                background: {p['panel_bg']};
+                color: {p['muted']};
+            }}
             """
+        )
+        self.about_tab.status_label.setStyleSheet(
+            f"QLabel {{ background:{p['status_bg']}; border:1px solid {p['input_border']}; border-radius:10px; padding:10px 12px; font-weight:bold; color:{p['text']}; }}"
         )
 
     def set_status(self, text: str):
@@ -775,6 +928,10 @@ class MainWindow(QMainWindow):
             self.overlay.sync_to_parent()
         if self.cleaner_overlay is not None and self.cleaner_overlay.isVisible():
             self.cleaner_overlay.sync_to_parent()
+        if self.disk_overlay is not None and self.disk_overlay.isVisible():
+            self.disk_overlay.sync_to_parent()
+        if self.installer_overlay is not None and self.installer_overlay.isVisible():
+            self.installer_overlay.sync_to_parent()
         super().resizeEvent(event)
 
     def initial_load(self):
@@ -790,6 +947,7 @@ class MainWindow(QMainWindow):
         self.set_status(self._tr("ready", "Ready"))
 
     def on_tab_changed(self, index: int):
+        self.sync_section_selection(index)
         self._ensure_tab_loaded(index)
 
     def _ensure_tab_loaded(self, index: int):
@@ -827,7 +985,7 @@ class MainWindow(QMainWindow):
         try:
             self.i18n.set_lang(self.language_combo.currentData())
             self.retranslate_ui()
-            self.update_action_list()
+            self.update_section_list()
 
             if self._loaded_sections["dashboard"]:
                 self.dashboard_tab.info_box.setPlainText(build_system_summary())
@@ -859,10 +1017,8 @@ class MainWindow(QMainWindow):
         self.subtitle_label.setText(self._tr("subtitle", "Linux maintenance toolkit", "Trusă de mentenanță pentru Linux"))
         self.distribution_label.setText(f"{self._tr('distribution', 'Distribution', 'Distribuție')}: {_get_distribution()}")
         self.language_label.setText(self._tr("language", "Language", "Limbă"))
-        self.actions_label.setText(self._tr("system_actions", "Quick actions", "Acțiuni rapide"))
-        self.run_btn.setText(self._tr("run_action", "Run action", "Rulează acțiunea"))
-        self.refresh_btn.setText(self._tr("refresh", "Refresh", "Reîmprospătează"))
-        self.quick_full_btn.setText(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
+        self.sections_label.setText(self._tr("sections", "Sections", "Secțiuni"))
+        self.refresh_btn.setText(self._theme_button_text())
         self.activity_label.setText(f"v{APP_VERSION}")
 
         if not (self.worker and self.worker.isRunning()):
@@ -872,10 +1028,20 @@ class MainWindow(QMainWindow):
         self.dashboard_tab.log_title.setText(self._tr("execution_log", "Execution log", "Jurnal execuție"))
 
         self.maintenance_tab.title.setText(self._tr("maintenance", "Maintenance", "Mentenanță"))
-        self.maintenance_tab.full_btn.setText(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
+        self.maintenance_tab.actions_title.setText(self._tr("system_actions", "Quick actions", "Acțiuni rapide"))
+        self.maintenance_tab.actions_hint.setText(
+            self._tr(
+                "maintenance_actions_hint",
+                "Run maintenance tasks directly from here.",
+                "Rulează direct de aici acțiunile de mentenanță.",
+            )
+        )
+        self.maintenance_tab.full_btn.setText(self._wrap_button_label(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă")))
+        self.maintenance_tab.full_btn.setToolTip(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
         self.maintenance_tab.output_title.setText(
             self._tr("maintenance_live_output", "Live output", "Output în timp real")
         )
+        self.rebuild_maintenance_actions()
         if not (self.worker and self.worker.isRunning()):
             self.maintenance_tab.status_label.setText(self._tr("maintenance_idle", "Idle", "Inactiv"))
             self.maintenance_tab.step_label.setText(self._tr("step_waiting", "Waiting...", "În așteptare..."))
@@ -1023,18 +1189,96 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(7, self._tr("packages", "Packages", "Pachete"))
         self.tabs.setTabText(8, self._tr("installer_title", "Install", "Install"))
         self.tabs.setTabText(9, self._tr("about_tab", "About", "Despre"))
+        self.update_section_list()
+        self.sync_section_selection(self.tabs.currentIndex())
 
-    def update_action_list(self):
-        current_row = self.action_list.currentRow()
-        self.action_list.clear()
-        for action in self.actions:
+    def _section_titles(self) -> list[str]:
+        return [
+            self._tr("dashboard", "Dashboard", "Panou"),
+            self._tr("maintenance", "Maintenance", "Mentenanță"),
+            self._tr("disk_analysis", "Disk", "Disc"),
+            self._tr("kernel_tools", "Kernel", "Kernel"),
+            self._tr("cleaner", "Cleaner", "Curățare"),
+            self._tr("startup_apps", "Startup", "Pornire"),
+            self._tr("services", "Services", "Servicii"),
+            self._tr("packages", "Packages", "Pachete"),
+            self._tr("installer_title", "Install", "Install"),
+            self._tr("about_tab", "About", "Despre"),
+        ]
+
+    def _section_icons(self):
+        style = self.style()
+        return [
+            style.standardIcon(QStyle.SP_ComputerIcon),
+            style.standardIcon(QStyle.SP_BrowserReload),
+            style.standardIcon(QStyle.SP_DriveHDIcon),
+            style.standardIcon(QStyle.SP_FileDialogDetailedView),
+            style.standardIcon(QStyle.SP_TrashIcon),
+            style.standardIcon(QStyle.SP_MediaPlay),
+            style.standardIcon(QStyle.SP_CommandLink),
+            style.standardIcon(QStyle.SP_FileDialogListView),
+            style.standardIcon(QStyle.SP_DialogOpenButton),
+            style.standardIcon(QStyle.SP_MessageBoxInformation),
+        ]
+
+    def _wrap_button_label(self, text: str, width: int = 18) -> str:
+        cleaned = " ".join(str(text or "").split())
+        if len(cleaned) <= width:
+            return cleaned
+        return "\n".join(textwrap.wrap(cleaned, width=width, break_long_words=False, break_on_hyphens=False))
+
+    def update_section_list(self):
+        current_row = self.section_list.currentRow()
+        self.section_list.blockSignals(True)
+        self.section_list.clear()
+        for title, icon in zip(self._section_titles(), self._section_icons()):
+            self.section_list.addItem(QListWidgetItem(icon, title))
+        target_row = self.tabs.currentIndex() if self.tabs.count() else current_row
+        if self.section_list.count() > 0:
+            self.section_list.setCurrentRow(max(0, target_row))
+        self.section_list.blockSignals(False)
+
+    def sync_section_selection(self, index: int):
+        if 0 <= index < self.section_list.count() and self.section_list.currentRow() != index:
+            self.section_list.blockSignals(True)
+            self.section_list.setCurrentRow(index)
+            self.section_list.blockSignals(False)
+
+    def on_section_changed(self, index: int):
+        if 0 <= index < self.tabs.count() and self.tabs.currentIndex() != index:
+            self.tabs.setCurrentIndex(index)
+
+    def rebuild_maintenance_actions(self):
+        layout = self.maintenance_tab.actions_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                if widget is not self.maintenance_tab.full_btn:
+                    widget.deleteLater()
+
+        max_columns = max(1, min(6, len(self.actions) + 1))
+        for column in range(max_columns):
+            layout.setColumnStretch(column, 1)
+
+        for index, action in enumerate(self.actions):
             label = action["label_en"] if self.i18n.lang == "en" else action["label_ro"]
-            description = action["description_en"] if self.i18n.lang == "en" else action["description_ro"]
-            item = QListWidgetItem(label)
-            item.setToolTip(description)
-            self.action_list.addItem(item)
-        if self.action_list.count() > 0:
-            self.action_list.setCurrentRow(max(0, current_row))
+            button = QPushButton(self._wrap_button_label(label))
+            button.setToolTip(label)
+            button.setObjectName("MaintenanceActionButton")
+            button.setMinimumHeight(42)
+            button.clicked.connect(lambda _checked=False, idx=index: self.run_action_by_index(idx))
+            row, column = divmod(index, max_columns)
+            layout.addWidget(button, row, column)
+
+        full_index = len(self.actions)
+        self.maintenance_tab.full_btn.setObjectName("MaintenanceActionButton")
+        self.maintenance_tab.full_btn.setText(self._wrap_button_label(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă")))
+        self.maintenance_tab.full_btn.setToolTip(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
+        self.maintenance_tab.full_btn.setMinimumHeight(42)
+        row, column = divmod(full_index, max_columns)
+        layout.addWidget(self.maintenance_tab.full_btn, row, column)
 
     def append_log(self, text: str):
         cursor = self.dashboard_tab.log_box.textCursor()
@@ -1076,19 +1320,24 @@ class MainWindow(QMainWindow):
             self.append_log(self._tr("info_refreshed", "Information refreshed."))
             self.set_status(self._tr("information_refreshed_status", "Information refreshed", "Informațiile au fost reîmprospătate"))
 
-    def run_selected_action(self):
-        row = self.action_list.currentRow()
-        if row < 0:
-            QMessageBox.warning(self, "Warning", self._tr("warning_select_action", "Please select an action first.", "Selectează mai întâi o acțiune."))
+    def run_action_by_index(self, index: int):
+        if not 0 <= index < len(self.actions):
+            QMessageBox.warning(
+                self,
+                "Warning",
+                self._tr("warning_select_action", "Please select an action first.", "Selectează mai întâi o acțiune."),
+            )
             return
 
-        action = self.actions[row]
+        action = self.actions[index]
         label = action["label_en"] if self.i18n.lang == "en" else action["label_ro"]
         description = action["description_en"] if self.i18n.lang == "en" else action["description_ro"]
 
         self.set_activity(self._tr("running_label", "Running: {label}", "Se rulează: {label}", label=label), busy=True)
         self.append_log(f"\n=== {label} ===")
         self.append_log(description)
+        self.append_maintenance_log(f"\n=== {label} ===")
+        self.append_maintenance_log(description)
 
         code = self.runner.run(action["commands"], requires_root=action.get("root", True))
         if code != 0:
@@ -1099,22 +1348,112 @@ class MainWindow(QMainWindow):
 
     def update_monitoring(self):
         data = self.monitor.snapshot()
-        self.dashboard_tab.cpu_chart.update_series(data["cpu_history"], self._tr("cpu_usage", "CPU usage", "Utilizare CPU"))
-        self.dashboard_tab.ram_chart.update_series(data["ram_history"], self._tr("ram_usage", "RAM usage", "Utilizare RAM"))
-        self.dashboard_tab.disk_chart.update_series(data["disk_history"], self._tr("disk_usage", "Disk usage", "Utilizare disc"))
-        self.dashboard_tab.net_chart.update_series(data["net_history"], self._tr("network_usage", "Network usage", "Utilizare rețea"))
 
-    def refresh_disk_analysis(self):
-        usage = get_root_usage()
+        cpu_now = float(data["cpu_history"][-1]) if data["cpu_history"] else 0.0
+        ram_now = float(data["ram_history"][-1]) if data["ram_history"] else 0.0
+        disk_now = float(data["disk_history"][-1]) if data["disk_history"] else 0.0
+        gpu_now = float(data["gpu_history"][-1]) if data["gpu_history"] else 0.0
+        battery_now = float(data["battery_history"][-1]) if data["battery_history"] else 0.0
+        net_now = float(data["net_history"][-1]) if data["net_history"] else 0.0
+
+        time_label = self._tr("time_axis_seconds", "Time (s)", "Timp (s)")
+        percent_axis_label = self._tr("usage_axis_percent", "Usage (%)", "Utilizare (%)")
+        throughput_axis_label = self._tr("throughput_axis", "Throughput (MB/s)", "Transfer (MB/s)")
+
+        gpu_title_value = f"{gpu_now:.1f}%" if data.get("gpu_available") else "N/A"
+        battery_title_value = f"{battery_now:.1f}%" if data.get("battery_available") else "N/A"
+
+        self.dashboard_tab.cpu_chart.update_series(
+            data["cpu_history"],
+            f"{self._tr('cpu_usage', 'CPU usage', 'Utilizare CPU')} ({cpu_now:.1f}%)",
+            y_min=0,
+            y_max=100,
+            y_suffix="%",
+            x_label=time_label,
+            y_label=percent_axis_label,
+        )
+        self.dashboard_tab.ram_chart.update_series(
+            data["ram_history"],
+            f"{self._tr('ram_usage', 'RAM usage', 'Utilizare RAM')} ({ram_now:.1f}%)",
+            y_min=0,
+            y_max=100,
+            y_suffix="%",
+            x_label=time_label,
+            y_label=percent_axis_label,
+        )
+        self.dashboard_tab.battery_chart.update_series(
+            data["battery_history"],
+            f"{self._tr('battery_charge', 'Battery charge', 'Nivel baterie')} ({battery_title_value})",
+            y_min=0,
+            y_max=100,
+            y_suffix="%",
+            x_label=time_label,
+            y_label=percent_axis_label,
+        )
+        self.dashboard_tab.disk_chart.update_series(
+            data["disk_history"],
+            f"{self._tr('disk_usage', 'Disk usage', 'Utilizare disc')} ({disk_now:.1f}%)",
+            y_min=0,
+            y_max=100,
+            y_suffix="%",
+            x_label=time_label,
+            y_label=percent_axis_label,
+        )
+        self.dashboard_tab.gpu_chart.update_series(
+            data["gpu_history"],
+            f"{self._tr('gpu_usage', 'GPU usage', 'Utilizare GPU')} ({gpu_title_value})",
+            y_min=0,
+            y_max=100,
+            y_suffix="%",
+            x_label=time_label,
+            y_label=percent_axis_label,
+        )
+        self.dashboard_tab.net_chart.update_series(
+            data["net_history"],
+            f"{self._tr('network_throughput', 'Network throughput', 'Transfer rețea')} ({net_now:.2f} MB/s)",
+            x_label=time_label,
+            y_label=throughput_axis_label,
+        )
+
+    def show_disk_overlay(self, detail: str | None = None):
+        message = self._tr("disk_loading_title", "Analyzing disk usage...", "Se analizează utilizarea discului...")
+        detail_text = detail or self._tr("disk_loading_detail", "Scanning files and directories in the background.", "Se scanează fișierele și directoarele în fundal.")
+
+        if self.disk_overlay is None:
+            self.disk_overlay = ActivityOverlay(self.disk_tab, message, detail_text)
+        else:
+            self.disk_overlay.set_text(message, detail_text)
+
+        self.disk_overlay.sync_to_parent()
+        self.disk_overlay.show_overlay()
+        self.disk_tab.analyze_btn.setEnabled(False)
+
+    def update_disk_overlay(self, detail: str):
+        if self.disk_overlay is not None:
+            self.disk_overlay.set_text(
+                self._tr("disk_loading_title", "Analyzing disk usage...", "Se analizează utilizarea discului..."),
+                detail,
+            )
+            self.disk_overlay.sync_to_parent()
+
+    def hide_disk_overlay(self):
+        self.disk_tab.analyze_btn.setEnabled(True)
+        if self.disk_overlay is not None:
+            self.disk_overlay.hide_overlay()
+            self.disk_overlay.deleteLater()
+            self.disk_overlay = None
+
+    def _apply_disk_analysis_result(self, payload: dict):
+        usage = payload.get("usage") or {}
         self.disk_tab.disk_pie.update_usage(
-            usage["used_gb"],
-            usage["free_gb"],
+            usage.get("used_gb", 0),
+            usage.get("free_gb", 0),
             self._tr("disk_partition_usage", "Disk partition usage", "Utilizare partiție disc"),
         )
 
-        dirs = get_home_top_directories()
-        labels = [item["name"] for item in dirs] if dirs else ["N/A"]
-        values = [item["size_mb"] for item in dirs] if dirs else [0]
+        dirs = payload.get("directories") or []
+        labels = [item.get("name", "") for item in dirs] if dirs else ["N/A"]
+        values = [item.get("size_mb", 0) for item in dirs] if dirs else [0]
         self.disk_tab.disk_bar.update_bars(
             labels,
             values,
@@ -1122,10 +1461,49 @@ class MainWindow(QMainWindow):
         )
 
         self.disk_tab.files_list.clear()
-        for item in get_home_largest_files(limit=20):
+        for item in payload.get("files") or []:
             self.disk_tab.files_list.addItem(f"{item['size_mb']:>8.2f} MB  {item['path']}")
 
         self._loaded_sections["disk"] = True
+
+    def _on_disk_analysis_progress(self, detail: str):
+        self.update_disk_overlay(detail)
+        self.set_status(self._tr("disk_loading_title", "Analyzing disk usage...", "Se analizează utilizarea discului..."))
+
+    def _on_disk_analysis_error(self, message: str):
+        QMessageBox.critical(self, "Error", message)
+
+    def _on_disk_analysis_finished(self):
+        self.hide_disk_overlay()
+        self.disk_worker = None
+        self.set_status(self._tr("ready", "Ready", "Gata"))
+
+        if self._disk_refresh_requested:
+            self._disk_refresh_requested = False
+            QTimer.singleShot(0, self.refresh_disk_analysis)
+
+    def refresh_disk_analysis(self):
+        if self.disk_worker is not None and self.disk_worker.isRunning():
+            self._disk_refresh_requested = True
+            self.update_disk_overlay(
+                self._tr(
+                    "disk_refresh_queued",
+                    "A new disk scan will start as soon as the current one finishes.",
+                    "O nouă scanare a discului va porni imediat ce se termină cea curentă.",
+                )
+            )
+            return
+
+        self._disk_refresh_requested = False
+        self.show_disk_overlay()
+        self.set_status(self._tr("disk_loading_title", "Analyzing disk usage...", "Se analizează utilizarea discului..."))
+
+        self.disk_worker = DiskAnalysisWorker()
+        self.disk_worker.progress_signal.connect(self._on_disk_analysis_progress)
+        self.disk_worker.result_signal.connect(self._apply_disk_analysis_result)
+        self.disk_worker.error_signal.connect(self._on_disk_analysis_error)
+        self.disk_worker.finished_signal.connect(self._on_disk_analysis_finished)
+        self.disk_worker.start()
 
     def refresh_kernel_analysis(self):
         report = get_kernel_report()
@@ -1328,7 +1706,6 @@ class MainWindow(QMainWindow):
         self.maintenance_tab.log_box.clear()
         self.maintenance_tab.step_label.setText(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."))
         self.maintenance_tab.eta_label.setText(self._tr("eta_waiting", "ETA: waiting", "ETA: în așteptare"))
-        self.quick_full_btn.setEnabled(False)
         self.maintenance_tab.full_btn.setEnabled(False)
         self.set_activity(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."), busy=True)
         self.append_log("\n=== Full system maintenance ===")
@@ -1377,15 +1754,104 @@ class MainWindow(QMainWindow):
                 ),
                 busy=False,
             )
-        self.quick_full_btn.setEnabled(True)
         self.maintenance_tab.full_btn.setEnabled(True)
         self.refresh_all()
 
-    def refresh_installer_catalog(self, query: str = ""):
-        data = apps_for_display(query)
+    def show_installer_overlay(self, detail: str | None = None):
+        message = self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații...")
+        detail_text = detail or self._tr(
+            "installer_loading_detail",
+            "Checking installed apps and available updates in the background.",
+            "Se verifică aplicațiile instalate și actualizările disponibile în fundal.",
+        )
+
+        if self.installer_overlay is None:
+            self.installer_overlay = ActivityOverlay(self.installer_tab, message, detail_text)
+        else:
+            self.installer_overlay.set_text(message, detail_text)
+
+        self.installer_overlay.sync_to_parent()
+        self.installer_overlay.show_overlay()
+        self._set_installer_controls_enabled(False)
+
+    def update_installer_overlay(self, detail: str):
+        if self.installer_overlay is not None:
+            self.installer_overlay.set_text(
+                self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații..."),
+                detail,
+            )
+            self.installer_overlay.sync_to_parent()
+
+    def hide_installer_overlay(self):
+        self._set_installer_controls_enabled(True)
+        if self.installer_overlay is not None:
+            self.installer_overlay.hide_overlay()
+            self.installer_overlay.deleteLater()
+            self.installer_overlay = None
+
+    def _set_installer_controls_enabled(self, enabled: bool):
+        self.installer_tab.search.setEnabled(enabled)
+        self.installer_tab.install_selected_btn.setEnabled(enabled)
+        self.installer_tab.remove_selected_btn.setEnabled(enabled)
+        self.installer_tab.update_selected_btn.setEnabled(enabled)
+        self.installer_tab.scroll.setEnabled(enabled)
+
+    def schedule_installer_catalog_refresh(self, query: str = ""):
+        self._installer_pending_query = query
+        self._installer_search_timer.start()
+
+    def _run_pending_installer_refresh(self):
+        self.refresh_installer_catalog(self._installer_pending_query)
+
+    def _apply_installer_catalog_result(self, data: dict, query: str):
+        self._installer_active_query = query
         self.installer_tab.populate(data)
         self._loaded_sections["installer"] = True
         self.retranslate_ui()
+
+    def _on_installer_catalog_error(self, message: str):
+        QMessageBox.critical(self, "Error", message)
+        self.append_log(f"Installer catalog error: {message}")
+
+    def _on_installer_catalog_finished(self):
+        active_query = self._installer_active_query
+        pending_query = self._installer_pending_query
+        self.hide_installer_overlay()
+        self.installer_catalog_worker = None
+        self.set_status(self._tr("ready", "Ready", "Gata"))
+
+        if self._installer_refresh_requested or pending_query != active_query:
+            self._installer_refresh_requested = False
+            self._installer_pending_query = pending_query
+            QTimer.singleShot(0, self._run_pending_installer_refresh)
+
+    def refresh_installer_catalog(self, query: str = ""):
+        if self._installer_search_timer.isActive():
+            self._installer_search_timer.stop()
+
+        self._installer_pending_query = query
+
+        if self.installer_catalog_worker is not None and self.installer_catalog_worker.isRunning():
+            self._installer_refresh_requested = True
+            self.update_installer_overlay(
+                self._tr(
+                    "installer_refresh_queued",
+                    "A new installer refresh will start as soon as the current one finishes.",
+                    "O nouă actualizare a listei Install va porni imediat ce se termină cea curentă.",
+                )
+            )
+            return
+
+        self._installer_refresh_requested = False
+        self._installer_active_query = query
+        self.show_installer_overlay()
+        self.set_status(self._tr("installer_loading_title", "Loading application catalog...", "Se încarcă lista de aplicații..."))
+
+        self.installer_catalog_worker = InstallerCatalogWorker(query)
+        self.installer_catalog_worker.result_signal.connect(self._apply_installer_catalog_result)
+        self.installer_catalog_worker.error_signal.connect(self._on_installer_catalog_error)
+        self.installer_catalog_worker.finished_signal.connect(self._on_installer_catalog_finished)
+        self.installer_catalog_worker.start()
 
     def on_installer_source_changed(self, app_id: str, source: str):
         card = self.installer_tab.cards.get(app_id)
@@ -1458,6 +1924,7 @@ class MainWindow(QMainWindow):
         self.append_log(f"Installer error: {message}")
 
     def on_installer_finished(self):
+        self.installer_worker = None
         self.hide_busy_overlay()
         self.refresh_installer_catalog(self.installer_tab.search.text())
         if self._loaded_sections["packages"]:

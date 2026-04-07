@@ -144,6 +144,7 @@ class InstallerCard(QFrame):
         text_col.setSpacing(4)
         self.name_label = QLabel(app["name"])
         self.name_label.setObjectName("SectionTitle")
+        self.name_label.setWordWrap(True)
         self.desc_label = QLabel(app.get("description", ""))
         self.desc_label.setWordWrap(True)
         self.meta_label = QLabel()
@@ -163,7 +164,8 @@ class InstallerCard(QFrame):
 
         self.status_label = QLabel()
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.status_label.setMinimumWidth(180)
+        self.status_label.setWordWrap(True)
+        self.status_label.setMinimumWidth(130)
 
         btn_row = QHBoxLayout()
         self.install_btn = QPushButton("Install")
