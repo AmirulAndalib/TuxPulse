@@ -4,8 +4,8 @@ from typing import Dict
 
 @dataclass(frozen=True)
 class PlatformInfo:
-    family: str          # debian / unknown
-    package_manager: str # apt / unknown
+    family: str          # debian / fedora / opensuse / arch / unknown
+    package_manager: str # apt / dnf / zypper / pacman / unknown
     python_cmd: str      # python3
     pkexec_cmd: str      # pkexec
 
@@ -29,8 +29,22 @@ def detect_platform() -> PlatformInfo:
     osr = _read_os_release()
     distro_id = osr.get("ID", "").lower()
     distro_like = osr.get("ID_LIKE", "").lower()
+    distro_id_like = f"{distro_id} {distro_like}".strip()
 
-    if distro_id in {"ubuntu", "debian", "linuxmint", "pop"} or "debian" in distro_like:
+    # Debian family
+    if distro_id in {"ubuntu", "debian", "linuxmint", "pop", "elementary"} or "debian" in distro_id_like:
         return PlatformInfo("debian", "apt", "python3", "pkexec")
+
+    # Fedora family
+    if distro_id in {"fedora", "rhel", "centos", "rocky", "alma", "nobara"} or "fedora" in distro_id_like:
+        return PlatformInfo("fedora", "dnf", "python3", "pkexec")
+
+    # openSUSE
+    if distro_id in {"opensuse", "opensuse-leap", "opensuse-tumbleweed"} or "suse" in distro_id_like:
+        return PlatformInfo("opensuse", "zypper", "python3", "pkexec")
+
+    # Arch / Manjaro / EndeavourOS etc.
+    if distro_id in {"arch", "manjaro", "endeavouros"} or "arch" in distro_id_like:
+        return PlatformInfo("arch", "pacman", "python3", "pkexec")
 
     return PlatformInfo("unknown", "unknown", "python3", "pkexec")

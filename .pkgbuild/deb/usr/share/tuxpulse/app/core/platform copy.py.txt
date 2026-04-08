@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass
+from typing import Dict, Iterable, Set
+
+
+@dataclass(frozen=True)
+class PlatformInfo:
+    family: str          # debian / fedora / arch / suse / unknown
+    package_manager: str # apt / dnf / pacman / zypper / unknown
+    python_cmd: str      # python3
+    pkexec_cmd: str      # pkexec
+
+
+_DEBIAN_IDS: Set[str] = {
+    "debian",
+    "ubuntu",
+    "linuxmint",
+    "pop",
+    "elementary",
+    "zorin",
+    "neon",
+    "kali",
+    "mx",
+    "raspbian",
+}
+
+_FEDORA_IDS: Set[str] = {
+    "fedora",
+    "rhel",
+    "centos",
+    "rocky",
+    "almalinux",
+    "ol",
+    "oracle",
+    "nobara",
+    "ultramarine",
+}
+
+_ARCH_IDS: Set[str] = {
+    "arch",
+    "archlinux",
+    "manjaro",
+    "endeavouros",
+    "garuda",
+}
+
+_SUSE_IDS: Set[str] = {
+    "opensuse",
+    "opensuse-leap",
+    "opensuse-tumbleweed",
+    "sles",
+    "sled",
+    "suse",
+}
+
+
+def _read_os_release() -> Dict[str, str]:
+    data: Dict[str, str] = {}
+    try:
+        with open("/etc/os-release", "r", encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                data[key] = value.strip().strip('"')
+    except OSError:
+        pass
+    return data
+
+
+def _tokenize(*values: str) -> Set[str]:
+    tokens: Set[str] = set()
+    for value in values:
+        for token in (value or "").replace(",", " ").split():
+            token = token.strip().lower()
+            if token:
+                tokens.add(token)
+    return tokens
+
+
+def _matches(tokens: Iterable[str], known_ids: Set[str]) -> bool:
+    token_set = {token.lower() for token in tokens if token}
+    return not token_set.isdisjoint(known_ids)
+
+
+def _fallback_from_binaries() -> tuple[str, str]:
+    if shutil.which("apt") or shutil.which("apt-get"):
+        return "debian", "apt"
+    if shutil.which("dnf"):
+        return "fedora", "dnf"
+    if shutil.which("pacman"):
+        return "arch", "pacman"
+    if shutil.which("zypper"):
+        return "suse", "zypper"
+    return "unknown", "unknown"
+
+
+def detect_platform() -> PlatformInfo:
+    osr = _read_os_release()
+    tokens = _tokenize(
+        osr.get("ID", ""),
+        osr.get("ID_LIKE", ""),
+        osr.get("NAME", ""),
+        osr.get("PRETTY_NAME", ""),
+    )
+
+    if _matches(tokens, _DEBIAN_IDS) or "debian" in tokens:
+        family, package_manager = "debian", "apt"
+    elif _matches(tokens, _FEDORA_IDS) or {"rhel", "fedora", "centos"} & tokens:
+        family, package_manager = "fedora", "dnf"
+    elif _matches(tokens, _ARCH_IDS) or "arch" in tokens:
+        family, package_manager = "arch", "pacman"
+    elif _matches(tokens, _SUSE_IDS) or {"suse", "opensuse"} & tokens:
+        family, package_manager = "suse", "zypper"
+    else:
+        family, package_manager = _fallback_from_binaries()
+
+    return PlatformInfo(
+        family=family,
+        package_manager=package_manager,
+        python_cmd=shutil.which("python3") or "python3",
+        pkexec_cmd=shutil.which("pkexec") or "pkexec",
+    )

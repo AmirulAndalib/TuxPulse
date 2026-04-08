@@ -1,9 +1,10 @@
 [Desktop Entry]
 Name=TuxPulse
-Comment=Universal Linux maintenance toolkit
+GenericName=System Maintenance
+Comment=Linux maintenance toolkit
 Exec=tuxpulse
 Icon=tuxpulse
 Terminal=false
 Type=Application
-Categories=System;Utility;
+Categories=System;Utility;Settings;
 StartupNotify=true

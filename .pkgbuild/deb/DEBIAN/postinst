@@ -1,4 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
-systemctl daemon-reload || true
-systemctl enable tuxpulse-helper.service || true
+chmod 755 /usr/bin/tuxpulse
+update-desktop-database /usr/share/applications || true
+gtk-update-icon-cache /usr/share/icons/hicolor -f -q || true
+echo "TuxPulse v5.0 installed successfully."

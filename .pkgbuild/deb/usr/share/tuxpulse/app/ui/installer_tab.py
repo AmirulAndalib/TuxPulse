@@ -13,23 +13,15 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-# CARD_COLOR_MAP = {
-#     "green": "#163d2b",
-#     "blue": "#10304d",
-#     "orange": "#4a3200",
-#     "purple": "#2f1d46",
-#     "white": "#111827",
-#     "red": "#3a1212",
-# }
-
 CARD_COLOR_MAP = {
-    "green": "#1f7a5c",   # verde mai deschis
+    "green": "#1f7a5c",
     "blue": "#10304d",
-    "orange": "#7a4b00",  # portocaliu mai vizibil
+    "orange": "#7a4b00",
     "purple": "#2f1d46",
     "white": "#111827",
     "red": "#3a1212",
 }
+
 
 class SelectButton(QPushButton):
     toggled_state = pyqtSignal(bool)
@@ -37,7 +29,6 @@ class SelectButton(QPushButton):
     def __init__(self):
         super().__init__("✓")
         self.setCheckable(True)
-        # self.setFixedSize(26, 26)
         self.setFixedSize(24, 24)
         self.setCursor(Qt.PointingHandCursor)
         self.toggled.connect(self._emit_and_refresh)
@@ -47,40 +38,10 @@ class SelectButton(QPushButton):
         self._refresh_style()
         self.toggled_state.emit(checked)
 
-    # def _refresh_style(self):
-    #     if self.isChecked():
-    #         self.setStyleSheet("""
-    #             QPushButton {
-    #                 background: #22c55e;
-    #                 color: white;
-    #                 border: 2px solid #ffffff;
-    #                 border-radius: 8px;
-    #                 font-size: 16px;
-    #                 font-weight: bold;
-    #             }
-    #             QPushButton:hover {
-    #                 background: #16a34a;
-    #             }
-    #         """)
-    #     else:
-    #         self.setStyleSheet("""
-    #             QPushButton {
-    #                 background: #ffffff;
-    #                 color: transparent;
-    #                 border: 2px solid #cbd5e1;
-    #                 border-radius: 8px;
-    #                 font-size: 16px;
-    #                 font-weight: bold;
-    #             }
-    #             QPushButton:hover {
-    #                 border: 2px solid #93c5fd;
-    #                 background: #f8fafc;
-    #             }
-    #         """)
-
     def _refresh_style(self):
         if self.isChecked():
-            self.setStyleSheet("""
+            self.setStyleSheet(
+                """
                 QPushButton {
                     min-width: 24px;
                     max-width: 24px;
@@ -94,9 +55,11 @@ class SelectButton(QPushButton):
                     font-weight: bold;
                     padding: 0px;
                 }
-            """)
+                """
+            )
         else:
-            self.setStyleSheet("""
+            self.setStyleSheet(
+                """
                 QPushButton {
                     min-width: 24px;
                     max-width: 24px;
@@ -108,7 +71,8 @@ class SelectButton(QPushButton):
                     border-radius: 6px;
                     padding: 0px;
                 }
-            """)
+                """
+            )
 
 
 class InstallerCard(QFrame):
@@ -144,7 +108,6 @@ class InstallerCard(QFrame):
         text_col.setSpacing(4)
         self.name_label = QLabel(app["name"])
         self.name_label.setObjectName("SectionTitle")
-        self.name_label.setWordWrap(True)
         self.desc_label = QLabel(app.get("description", ""))
         self.desc_label.setWordWrap(True)
         self.meta_label = QLabel()
@@ -164,8 +127,7 @@ class InstallerCard(QFrame):
 
         self.status_label = QLabel()
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.status_label.setWordWrap(True)
-        self.status_label.setMinimumWidth(130)
+        self.status_label.setMinimumWidth(180)
 
         btn_row = QHBoxLayout()
         self.install_btn = QPushButton("Install")
@@ -212,6 +174,7 @@ class InstallerCard(QFrame):
         self.source_label.setText(self._texts.get("source", "Source:"))
         self.native_radio.setText(self._texts.get("native", "Native"))
         self.flatpak_radio.setText(self._texts.get("flatpak", "Flatpak"))
+        self._apply_card_text_style()
         self._apply_state_label()
 
     def _status_text(self) -> str:
@@ -230,32 +193,49 @@ class InstallerCard(QFrame):
             return self._texts.get("unavailable", "Unavailable")
         return self._texts.get("available", "Available")
 
+    def _apply_card_text_style(self):
+        self.name_label.setStyleSheet(
+            "color: #f8fafc; background: transparent; border: none; font-size: 16px; font-weight: bold;"
+        )
+        self.desc_label.setStyleSheet(
+            "color: #e5e7eb; background: transparent; border: none;"
+        )
+        self.meta_label.setStyleSheet(
+            "color: #cbd5e1; background: transparent; border: none;"
+        )
+        self.extra_label.setStyleSheet(
+            "color: #fde68a; background: transparent; border: none; font-weight: bold;"
+        )
+        self.source_label.setStyleSheet(
+            "color: #e5e7eb; background: transparent; border: none; font-weight: bold;"
+        )
+        self.native_radio.setStyleSheet(
+            "QRadioButton { color: #f8fafc; background: transparent; }"
+        )
+        self.flatpak_radio.setStyleSheet(
+            "QRadioButton { color: #f8fafc; background: transparent; }"
+        )
+
     def _apply_state_label(self):
         ui = self.app.get("ui", {})
         color_name = ui.get("color_name", "white")
         status_text = self._status_text()
         badge = ui.get("badge", "")
 
-        # pill_bg = {
-        #     "green": "#14532d",
-        #     "blue": "#1d4ed8",
-        #     "orange": "#92400e",
-        #     "purple": "#6d28d9",
-        #     "white": "#334155",
-        #     "red": "#b91c1c",
-        # }.get(color_name, "#334155")
-
         if color_name == "white":
-            pill_bg = "#1f2937"  # neutru pentru instalate
+            pill_bg = "#1f2937"
         else:
             pill_bg = {
                 "green": "#166534",
                 "orange": "#a16207",
                 "red": "#b91c1c",
+                "blue": "#1d4ed8",
+                "purple": "#6d28d9",
             }.get(color_name, "#334155")
 
         self.status_label.setText(f"{badge} {status_text}".strip())
-        self.status_label.setStyleSheet(f"""
+        self.status_label.setStyleSheet(
+            f"""
             QLabel {{
                 background: {pill_bg};
                 color: white;
@@ -264,7 +244,8 @@ class InstallerCard(QFrame):
                 padding: 6px 10px;
                 font-weight: bold;
             }}
-        """)
+            """
+        )
 
     def _emit_source_changed(self):
         if self.native_radio.isChecked():
@@ -278,13 +259,16 @@ class InstallerCard(QFrame):
         bg = CARD_COLOR_MAP.get(color_name, "#111827")
         border = ui.get("border", "#1f2937")
 
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             QFrame#InstallerCard {{
                 background: {bg};
                 border: 2px solid {border};
                 border-radius: 14px;
             }}
-        """)
+            """
+        )
+        self._apply_card_text_style()
 
     def update_data(self, app: dict):
         self.app = app
@@ -334,11 +318,7 @@ class InstallerCard(QFrame):
         self.install_btn.setEnabled(bool(ui.get("can_install")))
         self.remove_btn.setEnabled(bool(ui.get("can_remove")))
         self.update_btn.setEnabled(bool(ui.get("can_update")))
-
-        if app.get("update_available"):
-            self.update_btn.setText(self._texts.get("update", "Update"))
-        else:
-            self.update_btn.setText(self._texts.get("update", "Update"))
+        self.update_btn.setText(self._texts.get("update", "Update"))
 
 
 class InstallerTab(QWidget):
@@ -384,7 +364,8 @@ class InstallerTab(QWidget):
         self.stats_label = QLabel()
         self.stats_label.setObjectName("Subtitle")
         self.stats_label.setWordWrap(True)
-        self.stats_label.setStyleSheet("""
+        self.stats_label.setStyleSheet(
+            """
             QLabel {
                 background: #0b1220;
                 border: 1px solid #243041;
@@ -393,7 +374,8 @@ class InstallerTab(QWidget):
                 color: #cbd5e1;
                 font-weight: bold;
             }
-        """)
+            """
+        )
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -540,9 +522,7 @@ class InstallerTab(QWidget):
         if count > 0:
             self.update_selected_btn.setText(f"{bulk} ({count})")
         else:
-            self.update_selected_btn.setText(
-                self.update_selected_btn.text().split(" (", 1)[0]
-            )
+            self.update_selected_btn.setText(self.update_selected_btn.text().split(" (", 1)[0])
 
     def selected_apps(self):
         apps = []

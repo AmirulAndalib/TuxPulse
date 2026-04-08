@@ -1,0 +1,191 @@
+import shutil
+import subprocess
+from typing import Dict, List, Optional, Tuple
+
+from core.platform import detect_platform
+
+
+class PackageBackend:
+    def __init__(self) -> None:
+        self.platform = detect_platform()
+        self.pm = self.platform.package_manager
+
+    def maintenance_steps(self) -> List[Tuple[str, str]]:
+        """Returnează pașii de mentenanță completă adaptați per distribuție"""
+        if self.pm == "apt":
+            return [
+                ("Update package lists", "apt update"),
+                ("Upgrade system packages", "apt upgrade -y"),
+                ("Remove old packages and configs", "apt autopurge -y || true"),
+                ("Remove unused packages", "apt autoremove -y || true"),
+                ("Clean package cache", "apt autoclean || true"),
+            ]
+        elif self.pm == "dnf":
+            return [
+                ("Upgrade system packages", "dnf upgrade -y"),
+                ("Remove unused packages", "dnf autoremove -y || true"),
+                ("Clean package cache", "dnf clean all || true"),
+            ]
+        elif self.pm == "zypper":
+            return [
+                ("Refresh repositories", "zypper --non-interactive refresh"),
+                ("Upgrade system packages", "zypper --non-interactive update"),
+                ("Clean package cache", "zypper --non-interactive clean -a || true"),
+            ]
+        elif self.pm == "pacman":
+            return [
+                ("Sync and upgrade packages", "pacman -Syu --noconfirm"),
+                ("Remove unused packages", "pacman -Rns $(pacman -Qdtq) --noconfirm || true"),
+                ("Clean package cache", "pacman -Sc --noconfirm || true"),
+            ]
+        return []
+
+    def _parse_name_version_lines(
+        self,
+        output: str,
+        search: str = "",
+        limit: Optional[int] = 300,
+    ) -> List[Dict[str, str]]:
+        items: List[Dict[str, str]] = []
+        needle = search.lower().strip()
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            if "\t" in line:
+                name, version = line.split("\t", 1)
+            else:
+                parts = line.split(maxsplit=1)
+                name = parts[0]
+                version = parts[1] if len(parts) > 1 else ""
+
+            if needle and needle not in name.lower():
+                continue
+
+            items.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "status": "installed",
+                }
+            )
+
+            if limit is not None and len(items) >= limit:
+                break
+
+        return items
+
+    def list_installed(self, search: str = "", limit: Optional[int] = 300) -> List[Dict[str, str]]:
+        if self.pm == "apt":
+            try:
+                output = subprocess.check_output(
+                    ["dpkg-query", "-W", "-f=${Package}\t${Version}\n"],
+                    text=True,
+                )
+                return self._parse_name_version_lines(output, search=search, limit=limit)
+            except Exception:
+                return []
+        elif self.pm == "dnf":
+            try:
+                cmd = ["dnf", "list", "--installed"]
+                if search:
+                    cmd.extend(["|", "grep", "-i", search])
+                output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+                items = []
+                for line in output.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("Installed Packages") or " " not in line:
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        name = parts[0].split(".")[0] if "." in parts[0] else parts[0]
+                        version = parts[1] if len(parts) > 1 else ""
+                        items.append({"name": name, "version": version, "status": "installed"})
+                        if limit and len(items) >= limit:
+                            break
+                return items
+            except Exception:
+                return []
+        # TODO: zypper și pacman pot fi adăugate mai târziu dacă e nevoie
+        return []
+
+    def count_installed(self) -> int:
+        if self.pm == "apt":
+            try:
+                output = subprocess.check_output(
+                    ["dpkg-query", "-W", "-f=${Package}\n"],
+                    text=True,
+                )
+                return sum(1 for line in output.splitlines() if line.strip())
+            except Exception:
+                return 0
+        elif self.pm == "dnf":
+            try:
+                output = subprocess.check_output(["dnf", "list", "--installed"], text=True, stderr=subprocess.DEVNULL)
+                return sum(1 for line in output.splitlines() if " @" in line or line.startswith("Installed"))
+            except Exception:
+                return 0
+        return 0
+
+    def list_upgradable(self, limit: Optional[int] = 300) -> List[Dict[str, str]]:
+        if self.pm == "apt":
+            # codul existent pentru apt
+            try:
+                output = subprocess.check_output(
+                    ["apt", "list", "--upgradable"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                items: List[Dict[str, str]] = []
+                for line in output.splitlines():
+                    line = line.strip()
+                    if not line or "/" not in line or line.startswith("Listing..."):
+                        continue
+                    parts = line.split()
+                    name = line.split("/", 1)[0]
+                    version = parts[1] if len(parts) > 1 else "upgradable"
+                    items.append({"name": name, "version": version, "status": "upgradable"})
+                    if limit and len(items) >= limit:
+                        break
+                return items
+            except Exception:
+                return []
+        elif self.pm == "dnf":
+            try:
+                output = subprocess.check_output(["dnf", "check-update"], text=True, stderr=subprocess.DEVNULL)
+                items = []
+                for line in output.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("Last metadata") or " " not in line:
+                        continue
+                    name = line.split()[0].split(".")[0] if "." in line.split()[0] else line.split()[0]
+                    items.append({"name": name, "version": "upgradable", "status": "upgradable"})
+                    if limit and len(items) >= limit:
+                        break
+                return items
+            except Exception:
+                return []
+        return []
+
+    def remove_cmd(self, name: str) -> List[str]:
+        if self.pm == "apt":
+            return ["apt", "remove", "-y", name]
+        elif self.pm == "dnf":
+            return ["dnf", "remove", "-y", name]
+        elif self.pm == "zypper":
+            return ["zypper", "--non-interactive", "remove", name]
+        raise RuntimeError(f"No supported package manager found for remove: {self.pm}")
+
+    def purge_cmd(self, name: str) -> List[str]:
+        if self.pm == "apt":
+            return ["apt", "purge", "-y", name]
+        elif self.pm == "dnf":
+            return ["dnf", "remove", "-y", name]  # dnf nu are purge clasic
+        elif self.pm == "zypper":
+            return ["zypper", "--non-interactive", "remove", "-y", name]
+        raise RuntimeError(f"No supported package manager found for purge: {self.pm}")
+
+    def has_flatpak(self) -> bool:
+        return shutil.which("flatpak") is not None

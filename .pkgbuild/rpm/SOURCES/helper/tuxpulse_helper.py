@@ -1,49 +1,40 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 import datetime
 import json
 import os
 import pwd
-import re
 import shutil
 import socket
 import subprocess
-from typing import Sequence
 
 SOCKET_PATH = "/run/tuxpulse.sock"
 LOG_FILE = "/var/log/tuxpulse-helper.log"
-SAFE_ARG_RE = re.compile(r"^[A-Za-z0-9._:+@/\-=]+$")
-ENV_ASSIGN_RE = re.compile(r"^[A-Z_][A-Z0-9_]*=[^\s]+$")
-
-ALLOWED_ACTIONS = {"run", "install", "maintenance", "remove", "update", "cleanup"}
 ALLOWED_BASE = {"apt", "pacman", "dnf", "zypper", "flatpak", "journalctl", "systemctl", "bash"}
-
 ALLOWED_PREFIXES = (
-    ["apt", "install", "-y"],
-    ["apt", "remove", "-y"],
-    ["apt", "purge", "-y"],
-    ["apt", "autoremove", "-y"],
-    ["apt", "update"],
-    ["pacman", "-S", "--noconfirm"],
-    ["pacman", "-R", "--noconfirm"],
-    ["pacman", "-Rns", "--noconfirm"],
-    ["dnf", "install", "-y"],
-    ["dnf", "remove", "-y"],
-    ["dnf", "upgrade", "-y"],
-    ["dnf", "autoremove", "-y"],
+    ["apt", "install"],
+    ["apt", "remove"],
+    ["apt", "purge"],
+    ["apt", "autoremove"],
+    ["pacman", "-S"],
+    ["pacman", "-R"],
+    ["pacman", "-Rns"],
+    ["dnf", "install"],
+    ["dnf", "remove"],
+    ["dnf", "upgrade"],
+    ["dnf", "autoremove"],
     ["zypper", "--non-interactive", "install"],
     ["zypper", "--non-interactive", "remove"],
     ["zypper", "--non-interactive", "update"],
-    ["zypper", "refresh"],
-    ["flatpak", "install", "-y", "flathub"],
-    ["flatpak", "uninstall", "-y"],
-    ["flatpak", "update", "-y"],
+    ["flatpak", "install"],
+    ["flatpak", "uninstall"],
+    ["flatpak", "update"],
     ["journalctl", "--vacuum-time=7d"],
+    ["systemctl"],
+    ["bash", "-lc"],
 )
 
 
-def _log(user: str, action: str, cmd: Sequence[str], output: str) -> None:
+def _log(user: str, action: str, cmd: list[str], output: str) -> None:
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as handle:
             handle.write(f"{datetime.datetime.now().isoformat()} | {user} | {action} | {' '.join(cmd)}\n")
@@ -54,7 +45,7 @@ def _log(user: str, action: str, cmd: Sequence[str], output: str) -> None:
         pass
 
 
-def _peer_user(conn: socket.socket) -> str:
+def _peer_user(conn) -> str:
     try:
         creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
         uid = int.from_bytes(creds[4:8], "little")
@@ -63,58 +54,31 @@ def _peer_user(conn: socket.socket) -> str:
         return "unknown"
 
 
-def _normalize_command(cmd: Sequence[str]) -> list[str]:
-    normalized = list(cmd)
-    if not normalized:
-        return []
-
-    if normalized[0] == "env":
-        idx = 1
-        while idx < len(normalized) and ENV_ASSIGN_RE.fullmatch(normalized[idx]):
-            idx += 1
-        normalized = normalized[idx:]
-
-    return normalized
-
-
-def _is_safe_extra_args(args: Sequence[str]) -> bool:
-    return all(SAFE_ARG_RE.fullmatch(arg or "") for arg in args)
-
-
-def _validate(cmd: Sequence[str]) -> bool:
-    normalized = _normalize_command(cmd)
-    if not normalized:
+def _validate(cmd: list[str]) -> bool:
+    if not cmd or cmd[0] not in ALLOWED_BASE:
         return False
-
-    base = normalized[0]
-    if base not in ALLOWED_BASE:
+    if cmd[0] == "flatpak" and shutil.which("flatpak") is None:
         return False
-
-    if base == "flatpak" and shutil.which("flatpak") is None:
-        return False
-
     for prefix in ALLOWED_PREFIXES:
-        if normalized[: len(prefix)] == prefix:
-            extras = normalized[len(prefix):]
-            return _is_safe_extra_args(extras)
-
+        if cmd[: len(prefix)] == prefix:
+            return True
     return False
 
 
-def _run(cmd: Sequence[str]) -> tuple[int, str]:
-    proc = subprocess.run(list(cmd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def _run(cmd: list[str]) -> tuple[int, str]:
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     return proc.returncode, proc.stdout
 
 
-def _handle(conn: socket.socket, payload: dict) -> dict:
+def _handle(conn, payload: dict) -> dict:
     action = payload.get("action")
     cmd = payload.get("cmd") or []
     user = _peer_user(conn)
 
-    if action not in ALLOWED_ACTIONS:
+    if action not in {"run", "install", "maintenance", "remove", "update", "cleanup"}:
         return {"code": 1, "output": "Invalid action"}
     if not isinstance(cmd, list) or not _validate(cmd):
-        return {"code": 1, "output": f"Blocked command: {' '.join(cmd) if isinstance(cmd, list) else str(cmd)}"}
+        return {"code": 1, "output": "Blocked command"}
 
     code, output = _run(cmd)
     _log(user, action, cmd, output)
@@ -124,12 +88,10 @@ def _handle(conn: socket.socket, payload: dict) -> dict:
 def main() -> None:
     if os.path.exists(SOCKET_PATH):
         os.remove(SOCKET_PATH)
-
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(SOCKET_PATH)
     os.chmod(SOCKET_PATH, 0o666)
     server.listen(10)
-
     while True:
         conn, _ = server.accept()
         try:

@@ -8,7 +8,8 @@ from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from PyQt5.QtCore import QThread, QTimer, Qt, pyqtSignal
+from PyQt5.QtCore import QSize, QThread, QTimer, Qt, pyqtSignal
+from PyQt5.QtGui import QFont, QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QComboBox,
@@ -68,6 +69,10 @@ DEVELOPER_LINKS = [
     ("GitHub", "https://github.com/eoliann"),
     ("Linktree", "https://linktr.ee/eoliam"),
 ]
+
+SIDEBAR_MENU_FONT_PT = 13
+SIDEBAR_MENU_ICON_SIZE = 24
+SIDEBAR_MENU_ITEM_HEIGHT = 46
 
 
 def _get_distribution() -> str:
@@ -129,6 +134,26 @@ class MaintenanceWorker(QThread):
             self.error_signal.emit(str(exc))
         finally:
             self.finished_signal.emit()
+
+
+class ActionWorker(QThread):
+    log_signal = pyqtSignal(str)
+    error_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(int)
+
+    def __init__(self, commands, requires_root: bool = True):
+        super().__init__()
+        self.commands = commands
+        self.requires_root = requires_root
+
+    def run(self):
+        try:
+            runner = CommandRunner(self.log_signal.emit)
+            code = runner.run(self.commands, requires_root=self.requires_root)
+            self.finished_signal.emit(code)
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
+            self.finished_signal.emit(1)
 
 
 class CleanerWorker(QThread):
@@ -423,9 +448,12 @@ class MainWindow(QMainWindow):
         self.monitor = MonitorService(history=40)
 
         self.worker = None
+        self.action_worker = None
         self.cleaner_worker = None
         self.installer_worker = None
         self.release_worker = None
+        self.current_action_label = ""
+        self.maintenance_action_buttons = []
 
         self.overlay = None
         self.cleaner_overlay = None
@@ -439,7 +467,7 @@ class MainWindow(QMainWindow):
         self._installer_active_query = ""
         self._installer_search_timer = QTimer(self)
         self._installer_search_timer.setSingleShot(True)
-        self._installer_search_timer.setInterval(260)
+        self._installer_search_timer.setInterval(1000)
         self._installer_search_timer.timeout.connect(self._run_pending_installer_refresh)
         self._blur = None
 
@@ -523,6 +551,10 @@ class MainWindow(QMainWindow):
         self.sections_label.setObjectName("SectionTitle")
         self.section_list = QListWidget()
         self.section_list.setObjectName("SectionList")
+        self.section_list.setIconSize(QSize(SIDEBAR_MENU_ICON_SIZE, SIDEBAR_MENU_ICON_SIZE))
+        menu_font = QFont()
+        menu_font.setPointSize(SIDEBAR_MENU_FONT_PT)
+        self.section_list.setFont(menu_font)
 
         self.refresh_btn = QPushButton()
 
@@ -684,6 +716,17 @@ class MainWindow(QMainWindow):
                 color=link_color,
             ),
         }
+
+    def _maintenance_busy(self) -> bool:
+        return bool(
+            (self.worker is not None and self.worker.isRunning())
+            or (self.action_worker is not None and self.action_worker.isRunning())
+        )
+
+    def _set_maintenance_controls_enabled(self, enabled: bool):
+        for button in self.maintenance_action_buttons:
+            button.setEnabled(enabled)
+        self.maintenance_tab.full_btn.setEnabled(enabled)
 
     def _theme_button_text(self) -> str:
         if self.theme_mode == "dark":
@@ -1021,7 +1064,7 @@ class MainWindow(QMainWindow):
         self.refresh_btn.setText(self._theme_button_text())
         self.activity_label.setText(f"v{APP_VERSION}")
 
-        if not (self.worker and self.worker.isRunning()):
+        if not self._maintenance_busy():
             self.set_status(self._tr("ready", "Ready", "Gata"))
 
         self.dashboard_tab.info_title.setText(self._tr("system_info", "System information", "Informații sistem"))
@@ -1042,7 +1085,8 @@ class MainWindow(QMainWindow):
             self._tr("maintenance_live_output", "Live output", "Output în timp real")
         )
         self.rebuild_maintenance_actions()
-        if not (self.worker and self.worker.isRunning()):
+        self._set_maintenance_controls_enabled(not self._maintenance_busy())
+        if not self._maintenance_busy():
             self.maintenance_tab.status_label.setText(self._tr("maintenance_idle", "Idle", "Inactiv"))
             self.maintenance_tab.step_label.setText(self._tr("step_waiting", "Waiting...", "În așteptare..."))
             self.maintenance_tab.eta_label.setText(self._tr("eta_waiting", "ETA: waiting", "ETA: în așteptare"))
@@ -1205,20 +1249,51 @@ class MainWindow(QMainWindow):
             self._tr("installer_title", "Install", "Install"),
             self._tr("about_tab", "About", "Despre"),
         ]
+    def _sidebar_icon(self, standard_pixmap) -> QIcon:
+        base_icon = self.style().standardIcon(standard_pixmap)
+
+        if self.theme_mode != "light":
+            return base_icon
+
+        pixmap = base_icon.pixmap(24, 24)
+        tinted = QPixmap(pixmap.size())
+        tinted.fill(Qt.transparent)
+
+        painter = QPainter(tinted)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(tinted.rect(), QColor("#111111"))
+        painter.end()
+
+        return QIcon(tinted)
+
+    # def _section_icons(self):
+    #     style = self.style()
+    #     return [
+    #         style.standardIcon(QStyle.SP_ComputerIcon),
+    #         style.standardIcon(QStyle.SP_BrowserReload),
+    #         style.standardIcon(QStyle.SP_DriveHDIcon),
+    #         style.standardIcon(QStyle.SP_FileDialogDetailedView),
+    #         style.standardIcon(QStyle.SP_TrashIcon),
+    #         style.standardIcon(QStyle.SP_MediaPlay),
+    #         style.standardIcon(QStyle.SP_CommandLink),
+    #         style.standardIcon(QStyle.SP_FileDialogListView),
+    #         style.standardIcon(QStyle.SP_DialogOpenButton),
+    #         style.standardIcon(QStyle.SP_MessageBoxInformation),
+    #     ]
 
     def _section_icons(self):
-        style = self.style()
         return [
-            style.standardIcon(QStyle.SP_ComputerIcon),
-            style.standardIcon(QStyle.SP_BrowserReload),
-            style.standardIcon(QStyle.SP_DriveHDIcon),
-            style.standardIcon(QStyle.SP_FileDialogDetailedView),
-            style.standardIcon(QStyle.SP_TrashIcon),
-            style.standardIcon(QStyle.SP_MediaPlay),
-            style.standardIcon(QStyle.SP_CommandLink),
-            style.standardIcon(QStyle.SP_FileDialogListView),
-            style.standardIcon(QStyle.SP_DialogOpenButton),
-            style.standardIcon(QStyle.SP_MessageBoxInformation),
+            self._sidebar_icon(QStyle.SP_ComputerIcon),
+            self._sidebar_icon(QStyle.SP_BrowserReload),
+            self._sidebar_icon(QStyle.SP_DriveHDIcon),
+            self._sidebar_icon(QStyle.SP_FileDialogDetailedView),
+            self._sidebar_icon(QStyle.SP_TrashIcon),
+            self._sidebar_icon(QStyle.SP_MediaPlay),
+            self._sidebar_icon(QStyle.SP_CommandLink),
+            self._sidebar_icon(QStyle.SP_FileDialogListView),
+            self._sidebar_icon(QStyle.SP_DialogOpenButton),
+            self._sidebar_icon(QStyle.SP_MessageBoxInformation),
         ]
 
     def _wrap_button_label(self, text: str, width: int = 18) -> str:
@@ -1231,8 +1306,18 @@ class MainWindow(QMainWindow):
         current_row = self.section_list.currentRow()
         self.section_list.blockSignals(True)
         self.section_list.clear()
+
+        item_font = QFont()
+        item_font.setPointSize(SIDEBAR_MENU_FONT_PT)
+
         for title, icon in zip(self._section_titles(), self._section_icons()):
-            self.section_list.addItem(QListWidgetItem(icon, title))
+            item = QListWidgetItem(icon, title)
+            item.setFont(item_font)
+            item.setSizeHint(QSize(0, SIDEBAR_MENU_ITEM_HEIGHT))
+            self.section_list.addItem(item)
+
+        self.section_list.setIconSize(QSize(SIDEBAR_MENU_ICON_SIZE, SIDEBAR_MENU_ICON_SIZE))
+
         target_row = self.tabs.currentIndex() if self.tabs.count() else current_row
         if self.section_list.count() > 0:
             self.section_list.setCurrentRow(max(0, target_row))
@@ -1249,6 +1334,7 @@ class MainWindow(QMainWindow):
             self.tabs.setCurrentIndex(index)
 
     def rebuild_maintenance_actions(self):
+        self.maintenance_action_buttons = []
         layout = self.maintenance_tab.actions_layout
         while layout.count():
             item = layout.takeAt(0)
@@ -1269,6 +1355,8 @@ class MainWindow(QMainWindow):
             button.setObjectName("MaintenanceActionButton")
             button.setMinimumHeight(42)
             button.clicked.connect(lambda _checked=False, idx=index: self.run_action_by_index(idx))
+            button.setEnabled(not self._maintenance_busy())
+            self.maintenance_action_buttons.append(button)
             row, column = divmod(index, max_columns)
             layout.addWidget(button, row, column)
 
@@ -1277,6 +1365,7 @@ class MainWindow(QMainWindow):
         self.maintenance_tab.full_btn.setText(self._wrap_button_label(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă")))
         self.maintenance_tab.full_btn.setToolTip(self._tr("full_maintenance", "Full maintenance", "Mentenanță completă"))
         self.maintenance_tab.full_btn.setMinimumHeight(42)
+        self.maintenance_tab.full_btn.setEnabled(not self._maintenance_busy())
         row, column = divmod(full_index, max_columns)
         layout.addWidget(self.maintenance_tab.full_btn, row, column)
 
@@ -1321,6 +1410,18 @@ class MainWindow(QMainWindow):
             self.set_status(self._tr("information_refreshed_status", "Information refreshed", "Informațiile au fost reîmprospătate"))
 
     def run_action_by_index(self, index: int):
+        if self._maintenance_busy():
+            QMessageBox.information(
+                self,
+                "Info",
+                self._tr(
+                    "maintenance_running",
+                    "Another maintenance task is already running.",
+                    "O altă acțiune de mentenanță rulează deja.",
+                ),
+            )
+            return
+
         if not 0 <= index < len(self.actions):
             QMessageBox.warning(
                 self,
@@ -1333,18 +1434,112 @@ class MainWindow(QMainWindow):
         label = action["label_en"] if self.i18n.lang == "en" else action["label_ro"]
         description = action["description_en"] if self.i18n.lang == "en" else action["description_ro"]
 
+        self.current_action_label = label
+        self.tabs.setCurrentWidget(self.maintenance_tab)
+        self.sync_section_selection(self.tabs.indexOf(self.maintenance_tab))
+        self.maintenance_tab.progress.setRange(0, 0)
+        self.maintenance_tab.status_label.setText(
+            self._tr("running_label", "Running: {label}", "Se rulează: {label}", label=label)
+        )
+        self.maintenance_tab.step_label.setText(
+            self._tr(
+                "maintenance_single_action_step",
+                "Command is running and live output is shown below.",
+                "Comanda rulează, iar output-ul live este afișat mai jos.",
+            )
+        )
+        self.maintenance_tab.eta_label.setText(
+            self._tr(
+                "maintenance_single_action_state",
+                "Status: in progress",
+                "Stare: în desfășurare",
+            )
+        )
         self.set_activity(self._tr("running_label", "Running: {label}", "Se rulează: {label}", label=label), busy=True)
+        self._set_maintenance_controls_enabled(False)
+
         self.append_log(f"\n=== {label} ===")
         self.append_log(description)
         self.append_maintenance_log(f"\n=== {label} ===")
         self.append_maintenance_log(description)
 
-        code = self.runner.run(action["commands"], requires_root=action.get("root", True))
-        if code != 0:
-            QMessageBox.critical(self, "Error", f"{self._tr('action_failed', 'Action failed with exit code:')} {code}")
+        self.action_worker = ActionWorker(action["commands"], requires_root=action.get("root", True))
+        self.action_worker.log_signal.connect(self.append_log)
+        self.action_worker.log_signal.connect(self.append_maintenance_log)
+        self.action_worker.error_signal.connect(self.on_single_action_error)
+        self.action_worker.finished_signal.connect(self.on_single_action_finished)
+        self.action_worker.start()
+
+    def on_single_action_error(self, message: str):
+        self.append_log(f"Error: {message}")
+        self.append_maintenance_log(f"Error: {message}")
+        QMessageBox.critical(self, "Error", message)
+
+    def on_single_action_finished(self, code: int):
+        label = self.current_action_label or self._tr("maintenance", "Maintenance", "Mentenanță")
+        self.action_worker = None
+        self._set_maintenance_controls_enabled(True)
+        self.maintenance_tab.progress.setRange(0, 100)
 
         self.refresh_all()
-        self.set_activity(self._tr("ready", "Ready", "Gata"), busy=False)
+
+        if code == 0:
+            message = self._tr(
+                "maintenance_single_action_done",
+                "Action completed successfully: {label}",
+                "Acțiune finalizată cu succes: {label}",
+                label=label,
+            )
+            self.maintenance_tab.progress.setValue(100)
+            self.maintenance_tab.status_label.setText(message)
+            self.maintenance_tab.step_label.setText(
+                self._tr(
+                    "maintenance_single_action_done_step",
+                    "The command finished successfully.",
+                    "Comanda s-a încheiat cu succes.",
+                )
+            )
+            self.maintenance_tab.eta_label.setText(
+                self._tr(
+                    "maintenance_single_action_done_state",
+                    "Status: completed",
+                    "Stare: finalizată",
+                )
+            )
+            self.append_log(message)
+            self.append_maintenance_log(message)
+            self.set_activity(message, busy=False)
+            self.notify(message)
+        else:
+            message = self._tr(
+                "maintenance_single_action_failed",
+                "Action failed: {label} (exit code {code})",
+                "Acțiune eșuată: {label} (cod de ieșire {code})",
+                label=label,
+                code=code,
+            )
+            self.maintenance_tab.progress.setValue(0)
+            self.maintenance_tab.status_label.setText(message)
+            self.maintenance_tab.step_label.setText(
+                self._tr(
+                    "maintenance_single_action_failed_step",
+                    "The command finished with an error.",
+                    "Comanda s-a încheiat cu eroare.",
+                )
+            )
+            self.maintenance_tab.eta_label.setText(
+                self._tr(
+                    "maintenance_single_action_failed_state",
+                    "Status: failed",
+                    "Stare: eșuată",
+                )
+            )
+            self.append_log(message)
+            self.append_maintenance_log(message)
+            self.set_activity(message, busy=False)
+            QMessageBox.critical(self, "Error", message)
+
+        self.current_action_label = ""
 
     def update_monitoring(self):
         data = self.monitor.snapshot()
@@ -1706,7 +1901,7 @@ class MainWindow(QMainWindow):
         self.maintenance_tab.log_box.clear()
         self.maintenance_tab.step_label.setText(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."))
         self.maintenance_tab.eta_label.setText(self._tr("eta_waiting", "ETA: waiting", "ETA: în așteptare"))
-        self.maintenance_tab.full_btn.setEnabled(False)
+        self._set_maintenance_controls_enabled(False)
         self.set_activity(self._tr("maintenance_starting", "Starting maintenance...", "Se pornește mentenanța..."), busy=True)
         self.append_log("\n=== Full system maintenance ===")
         self.append_maintenance_log("=== Full system maintenance ===")
@@ -1754,7 +1949,7 @@ class MainWindow(QMainWindow):
                 ),
                 busy=False,
             )
-        self.maintenance_tab.full_btn.setEnabled(True)
+        self._set_maintenance_controls_enabled(True)
         self.refresh_all()
 
     def show_installer_overlay(self, detail: str | None = None):
@@ -1789,19 +1984,48 @@ class MainWindow(QMainWindow):
             self.installer_overlay.deleteLater()
             self.installer_overlay = None
 
+    # def _set_installer_controls_enabled(self, enabled: bool):
+    #     self.installer_tab.search.setEnabled(enabled)
+    #     self.installer_tab.install_selected_btn.setEnabled(enabled)
+    #     self.installer_tab.remove_selected_btn.setEnabled(enabled)
+    #     self.installer_tab.update_selected_btn.setEnabled(enabled)
+    #     self.installer_tab.scroll.setEnabled(enabled)
+
     def _set_installer_controls_enabled(self, enabled: bool):
-        self.installer_tab.search.setEnabled(enabled)
+        self.installer_tab.search.setEnabled(True)
         self.installer_tab.install_selected_btn.setEnabled(enabled)
         self.installer_tab.remove_selected_btn.setEnabled(enabled)
         self.installer_tab.update_selected_btn.setEnabled(enabled)
         self.installer_tab.scroll.setEnabled(enabled)
 
+    # def schedule_installer_catalog_refresh(self, query: str = ""):
+    #     self._installer_pending_query = query
+    #     self._installer_search_timer.start()
+
     def schedule_installer_catalog_refresh(self, query: str = ""):
+        query = (query or "").strip()
         self._installer_pending_query = query
+
+        if not query:
+            self._installer_search_timer.start()
+            return
+
+        if len(query) < 3:
+            self._installer_search_timer.stop()
+            return
+
         self._installer_search_timer.start()
 
+    # def _run_pending_installer_refresh(self):
+    #     self.refresh_installer_catalog(self._installer_pending_query)
+
     def _run_pending_installer_refresh(self):
-        self.refresh_installer_catalog(self._installer_pending_query)
+        query = (self._installer_pending_query or "").strip()
+
+        if query and len(query) < 3:
+            return
+
+        self.refresh_installer_catalog(query)
 
     def _apply_installer_catalog_result(self, data: dict, query: str):
         self._installer_active_query = query

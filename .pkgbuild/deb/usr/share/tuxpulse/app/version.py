@@ -1,2 +1,2 @@
-APP_VERSION = "4.0"
+APP_VERSION = "5.0"
 GITHUB_REPO = "eoliann/TuxPulse"

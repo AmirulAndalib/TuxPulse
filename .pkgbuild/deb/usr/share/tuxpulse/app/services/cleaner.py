@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import shutil
 import subprocess
 from pathlib import Path
@@ -69,36 +71,38 @@ def clean_target(target_name):
         return cleanup_orphan_packages()
 
     for target in get_cleaner_targets():
-        if target["name"] == target_name:
-            path = Path(target["path"])
+        if target["name"] != target_name:
+            continue
 
-            if target["requires_root"]:
-                return {
-                    "kind": "command",
-                    "command": [
-                        "sh",
-                        "-c",
-                        f'find "{path}" -mindepth 1 -maxdepth 1 -exec rm -rf {{}} +',
-                    ],
-                    "requires_root": True,
-                }
+        path = Path(target["path"])
 
-            if path.name == "cache" and str(path) == str(Path.home() / ".cache"):
-                if path.exists() and path.is_dir():
-                    for item in path.iterdir():
-                        if item.name == "Trash":
-                            continue
-                        if item.is_dir():
-                            shutil.rmtree(item, ignore_errors=True)
-                        else:
-                            try:
-                                item.unlink()
-                            except OSError:
-                                pass
-                return None
+        if target["requires_root"]:
+            return {
+                "kind": "command",
+                "command": [
+                    "sh",
+                    "-c",
+                    f'find "{path}" -mindepth 1 -maxdepth 1 -exec rm -rf {{}} +',
+                ],
+                "requires_root": True,
+            }
 
-            _clear_directory(path)
+        if path.name == "cache" and str(path) == str(Path.home() / ".cache"):
+            if path.exists() and path.is_dir():
+                for item in path.iterdir():
+                    if item.name == "Trash":
+                        continue
+                    if item.is_dir():
+                        shutil.rmtree(item, ignore_errors=True)
+                    else:
+                        try:
+                            item.unlink()
+                        except OSError:
+                            pass
             return None
+
+        _clear_directory(path)
+        return None
 
     return None
 
@@ -159,24 +163,32 @@ def cleanup_orphan_packages():
     from core.pkg_backend import PackageBackend
 
     pm = PackageBackend().pm
+
     if pm == "apt":
         return {
             "kind": "command",
             "command": ["apt", "autoremove", "-y"],
             "requires_root": True,
         }
+
     if pm == "pacman":
         return {
             "kind": "command",
-            "command": ["bash", "-lc", 'orphans=$(pacman -Qtdq 2>/dev/null || true); [ -n "$orphans" ] && pacman -Rns --noconfirm $orphans || true'],
+            "command": [
+                "bash",
+                "-lc",
+                'orphans=$(pacman -Qtdq 2>/dev/null || true); [ -n "$orphans" ] && pacman -Rns --noconfirm $orphans || true',
+            ],
             "requires_root": True,
         }
+
     if pm == "dnf":
         return {
             "kind": "command",
             "command": ["dnf", "autoremove", "-y"],
             "requires_root": True,
         }
+
     if pm == "zypper":
         return {
             "kind": "command",
@@ -187,4 +199,5 @@ def cleanup_orphan_packages():
             ],
             "requires_root": True,
         }
+
     raise RuntimeError("Unsupported distribution.")
