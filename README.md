@@ -184,12 +184,15 @@ sudo dnf install ./dist/tuxpulse-<version>-1*.noarch.rpm
 ## Arch Linux packaging note
 
 The repository already contains `packaging/arch/PKGBUILD`, which is the right starting point for Arch support.
-
-Example local build flow:
+### 1. Clonează proiectul de pe GitHub
+### 2. Fă scriptul executabil
+### 3. Build + instalare automată
 
 ```bash
-cd packaging/arch
-makepkg -si
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
+chmod +x build_arch.sh
+./build_arch.sh --install
 ```
 
 Before publishing Arch packages, verify and update the PKGBUILD metadata (especially `pkgver`, dependencies and installed assets) so it matches the current application version and packaging layout.
