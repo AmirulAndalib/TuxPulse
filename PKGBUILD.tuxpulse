@@ -1,0 +1,40 @@
+pkgname=tuxpulse
+pkgver=4.0
+pkgrel=1
+pkgdesc="Multi-distro Linux maintenance and installer toolkit"
+arch=('any')
+url="https://github.com/eoliann/TuxPulse"
+license=('MIT')
+depends=('python' 'python-pyqt5' 'python-psutil' 'python-matplotlib' 'polkit')
+optdepends=('flatpak: Flatpak app installation support')
+install=('tuxpulse.install')
+source=()
+sha256sums=()
+
+package() {
+    install -dm755 "$pkgdir/usr/share/tuxpulse"
+    cp -a "$srcdir/app" "$pkgdir/usr/share/tuxpulse/"
+
+    if [[ -d "$srcdir/helper" ]]; then
+        cp -a "$srcdir/helper" "$pkgdir/usr/share/tuxpulse/"
+    fi
+
+    install -Dm755 /dev/stdin "$pkgdir/usr/bin/tuxpulse" <<'LAUNCHER'
+#!/usr/bin/env bash
+export PYTHONPATH="/usr/share/tuxpulse/app"
+exec /usr/bin/python /usr/share/tuxpulse/app/main.py "$@"
+LAUNCHER
+
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/tuxpulse.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=TuxPulse
+Comment=TuxPulse System Toolkit
+Exec=/usr/bin/tuxpulse
+Icon=tuxpulse
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true
+StartupWMClass=tuxpulse
+DESKTOP
+}

@@ -1,0 +1,9 @@
+post_install() {
+  cat <<'MSG'
+TuxPulse was installed successfully.
+Run it with: tuxpulse
+MSG
+}
+post_upgrade() {
+  post_install
+}
