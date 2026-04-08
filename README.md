@@ -1,3 +1,4 @@
+[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 ![Followers](https://img.shields.io/github/followers/eoliann?style=plastic&color=green)
 ![Watchers](https://img.shields.io/github/watchers/eoliann/TuxPulse?style=plastic)
 ![Stars](https://img.shields.io/github/stars/eoliann/TuxPulse?style=plastic)
@@ -8,234 +9,197 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
 ![OS](https://img.shields.io/badge/OS-Linux-blue?style=plastic)
 ![Lang](https://img.shields.io/badge/Lang-Python-magenta?style=plastic)
-![Total Downloads](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
 
 # TuxPulse
 
-**TuxPulse** is a modern Linux maintenance toolkit with a PyQt desktop interface for updates, cleanup, monitoring, disk analysis, kernel cleanup suggestions, package inspection and application installation.
+TuxPulse is a Python + PyQt desktop maintenance toolkit for Linux.
 
-The project started with Debian/Ubuntu in mind, but the codebase is moving toward broader Linux support, especially for native package operations in the Installer and maintenance-related areas.
+The project currently includes:
+- a GUI application launched from `app/main.py`
+- a unified package builder for **DEB** and **RPM** via `build_packages.sh`
+- a legacy DEB-only builder via `build_deb.sh`
+- packaging assets for **Arch Linux** in `packaging/arch/PKGBUILD`
+- helper, systemd and polkit assets in the repository for the secure execution model
 
-## What TuxPulse does
+## Main features
 
-### System maintenance
-- update system packages
-- run upgrade and cleanup actions
-- update Flatpak packages when Flatpak is installed
-- launch grouped maintenance flows from a graphical interface
+TuxPulse currently exposes the following main areas in the application:
 
-### Live monitoring dashboard
-- CPU usage history
-- RAM usage history
-- disk usage history
-- network activity history
-- system summary panel
+- **Dashboard** – live system monitoring and summary widgets
+- **Maintenance** – update / maintenance actions, including full maintenance flows
+- **Disk** – graphical disk analysis
+- **Kernel** – kernel report and suggested cleanup actions
+- **Cleaner** – cache, logs and cleanup tasks
+- **Startup** – startup application inspection / control
+- **Services** – system service inspection / control
+- **Packages** – installed package listing, upgrades and removal helpers
+- **Installer** – application catalog with native package manager / Flatpak support
+- **UI extras** – dark mode / light mode, bilingual direction (English / Romanian), release-awareness logic for GitHub updates
 
-### Disk analysis
-- root filesystem usage overview
-- largest directories in the home folder
-- largest files in the home folder
+## Distribution support
 
-### Kernel tools
-- detect current kernel
-- list installed kernels
-- suggest removable old kernels
-- generate removal commands based on the detected package manager
+### Current packaging state
 
-### Cleaner
-- thumbnail cache cleanup
-- user cache cleanup
-- trash cleanup
-- temporary files cleanup
-- journal vacuum
-- orphan package cleanup
+- **DEB**: supported by `build_packages.sh`
+- **RPM**: supported by `build_packages.sh` when `rpmbuild` is installed
+- **Arch Linux**: repository scaffold exists through `packaging/arch/PKGBUILD`, but it is not yet built by the unified builder
 
-### Package tools
-- list installed packages
-- list upgradable packages
-- remove packages
-- purge packages
-
-> Note: the package inspection/removal layer is currently strongest on Debian/Ubuntu systems.
-
-### App installer
-- categorized software catalog
-- native package install/remove/update
-- Flatpak install/remove/update
-- native/Flatpak availability detection
-- update detection for installed apps
-- bulk actions
-- live search
-- automatic source selection with Flatpak fallback when needed
-
-### System integration tabs
-- startup applications viewer/editor
-- system services viewer/manager
-- About tab with project links and release check
-
-### User experience
-- English and Romanian interface
-- dark mode and light mode
-- sidebar navigation
-- modern card-based UI
-
-## Current support status
-
-### Well covered today
-- **Debian / Ubuntu**
-  - source execution
-  - DEB package build
-  - privileged actions through packaged helper components
-
-### Source execution already relevant
-- **Fedora and other RPM-based distributions**
-  - source execution is practical once the runtime dependencies are installed
-  - parts of the app already include `dnf` / `rpm` logic
-
-- **openSUSE and similar distributions**
-  - source execution is practical once the runtime dependencies are installed
-  - parts of the app already include `zypper` logic
-
-### In progress / to be aligned further
-- **Arch Linux**
-  - parts of the codebase already include `pacman` logic
-  - packaging and README instructions can be refined further as Arch support is finalized
-
-## Dependencies
-
-Install the runtime dependencies with your distro package manager.
+## Requirements
 
 ### Debian / Ubuntu
+
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1
+sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib flatpak
 ```
 
-### Fedora / RPM-based
+### Fedora
+
 ```bash
-sudo dnf install -y python3 python3-qt5 python3-psutil python3-matplotlib polkit
+sudo dnf install python3 python3-qt5 python3-psutil python3-matplotlib python3-matplotlib-qt5 flatpak
 ```
 
-### openSUSE
+For RPM package creation:
+
 ```bash
-sudo zypper install -y python3 python3-qt5 python3-psutil python3-matplotlib polkit
+sudo dnf install rpm-build desktop-file-utils gtk3
 ```
 
 ### Arch Linux
-```bash
-sudo pacman -S --needed python python-pyqt5 python-psutil python-matplotlib polkit
-```
 
-### Optional but recommended
 ```bash
-# for Flatpak app management inside TuxPulse
-flatpak
-
-# for service management tabs
-systemd / systemctl
+sudo pacman -S python python-pyqt5 python-psutil python-matplotlib polkit flatpak
 ```
 
 ## Run from source
 
-Clone the repository and run the application from the project root.
+### Debian / Ubuntu / Fedora
 
-### Debian / Ubuntu
 ```bash
-git clone https://github.com/eoliann/TuxPulse.git
-cd TuxPulse
-python3 app/main.py
-```
-
-### Fedora / RPM-based
-```bash
-git clone https://github.com/eoliann/TuxPulse.git
-cd TuxPulse
-python3 app/main.py
-```
-
-### openSUSE
-```bash
-git clone https://github.com/eoliann/TuxPulse.git
-cd TuxPulse
 python3 app/main.py
 ```
 
 ### Arch Linux
+
 ```bash
-git clone https://github.com/eoliann/TuxPulse.git
-cd TuxPulse
 python app/main.py
 ```
 
-## Build a DEB package
+## Build packages
 
-The repository already includes a dedicated DEB build script.
+### Recommended: unified DEB + RPM builder
+
+The recommended release builder is:
+
+```bash
+chmod +x build_packages.sh
+./build_packages.sh
+```
+
+What it does:
+- reads the application version from `app/version.py`
+- builds a versioned **DEB** package into `dist/`
+- attempts to build a versioned **RPM** package into `dist/` when `rpmbuild` is available
+- packages the application sources, helper directory, launcher, desktop entry and optional icon
+
+Expected output:
+
+```text
+dist/
+├── tuxpulse_<version>_all.deb
+└── tuxpulse-<version>-1.<dist>.noarch.rpm
+```
+
+### Legacy: DEB-only builder
+
+The repository still contains:
 
 ```bash
 chmod +x build_deb.sh
 ./build_deb.sh
 ```
 
-Expected result:
-- a `.deb` package is created in the `dist/` directory
-- the package version is read from `app/version.py`
-- the build includes the application, helper files, systemd service and polkit policy
+This script is useful as a simple DEB packager, but for release builds the unified builder is preferred because it reads the version from `app/version.py` and produces versioned artifacts in `dist/`.
 
-## RPM package build
+## Install the generated packages
 
-At the moment, the public repository should document **source execution for RPM-based distributions**, but the README should **not pretend that an RPM package builder already exists** unless `build_rpm.sh` and the corresponding `.spec` file are committed.
+### Install DEB
 
-A safe README position today is:
-- source execution on Fedora / RPM-based systems is documented and supported as a development workflow
-- native RPM packaging instructions will be added once the RPM build files are part of the repository
+```bash
+sudo apt install ./dist/tuxpulse_<version>_all.deb
+```
 
-## Arch packaging
+### Install RPM
 
-Arch support can be documented in two steps:
-- source execution, which is already straightforward
-- package build instructions, after the Arch packaging files and versioning are fully aligned
+```bash
+sudo dnf install ./dist/tuxpulse-<version>-1*.noarch.rpm
+```
 
-## Privileged operations
+## Arch Linux packaging note
 
-TuxPulse can use elevated privileges for administrative actions.
+The repository already contains `packaging/arch/PKGBUILD`, which is the right starting point for Arch support.
 
-Depending on how it is started, this can involve:
-- packaged helper components
-- polkit integration
-- `pkexec` or `sudo` fallback during source-based execution
+Example local build flow:
 
-## Project structure
+```bash
+cd packaging/arch
+makepkg -si
+```
+
+Before publishing Arch packages, verify and update the PKGBUILD metadata (especially `pkgver`, dependencies and installed assets) so it matches the current application version and packaging layout.
+
+## Secure execution model
+
+The repository contains:
+- `helper/`
+- `packaging/systemd/tuxpulse-helper.service`
+- `packaging/polkit/com.tuxpulse.policy`
+
+This shows the project direction toward a helper-based privileged execution model.
+
+At the moment, the unified package builder focuses on packaging the app itself, helper sources, desktop entry and icon. If you want DEB/RPM packages that also install and enable the helper service / polkit policy automatically, extend `build_packages.sh` accordingly.
+
+## Custom icon
+
+Place your PNG icon here before building:
+
+```bash
+assets/tuxpulse.png
+```
+
+The package builders will include it when the file exists.
+
+## Project layout
 
 ```text
 TuxPulse/
 ├── app/
-│   ├── core/
-│   ├── services/
-│   ├── ui/
-│   ├── main.py
-│   ├── ui_main.py
-│   └── version.py
+├── assets/
 ├── helper/
 ├── packaging/
-│   ├── deb/
 │   ├── arch/
+│   ├── deb/
 │   ├── polkit/
 │   └── systemd/
-└── build_deb.sh
+├── build_deb.sh
+├── build_packages.sh
+└── README.md
 ```
+
+## Versioning
+
+The application version is stored in:
+
+```bash
+app/version.py
+```
+
+For release consistency, update the version there before building packages.
 
 ## Notes
 
-- Kernel cleanup should always be reviewed before removal.
-- Service management requires `systemctl`.
-- Flatpak operations are shown only when Flatpak is available.
-- Running from source is the best path for development and testing across multiple distributions.
-- DEB packaging is currently the packaging workflow that is clearly present in the public repository.
-
-## About
-
-- GitHub: https://github.com/eoliann/TuxPulse
-- Releases: https://github.com/eoliann/TuxPulse/releases
-- Issues: https://github.com/eoliann/TuxPulse/issues
-
-TuxPulse is focused on giving Linux users a cleaner and more visual way to maintain their systems from one desktop application.
+- `build_packages.sh` is the main packaging entry point for current DEB/RPM release work.
+- `build_deb.sh` remains in the repository, but it is better treated as a legacy / fallback script.
+- Arch support is already scaffolded in the repository, but should be aligned with the current version and packaging flow before publishing.
+- The README should be kept in sync whenever the package layout, dependencies or helper installation flow changes.
