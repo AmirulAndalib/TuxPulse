@@ -1,5 +1,5 @@
 Name:           tuxpulse
-Version:        5.0
+Version:        5.1
 Release:        1%{?dist}
 Summary:        Linux maintenance toolkit
 License:        GPL-3.0-or-later
@@ -52,5 +52,5 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor -f -q || true
 %{_datadir}/tuxpulse
 
 %changelog
-* Wed Apr 08 2026 TuxPulse Team - 5.0-1
-- Release v5.0
+* Wed Apr 08 2026 TuxPulse Team - 5.1-1
+- Release v5.1
