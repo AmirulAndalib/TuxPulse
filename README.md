@@ -37,6 +37,51 @@ TuxPulse currently exposes the following main areas in the application:
 - **Installer** – application catalog with native package manager / Flatpak support
 - **UI extras** – dark mode / light mode, bilingual direction (English / Romanian), release-awareness logic for GitHub updates
 
+## Gallery
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-1.0.png" alt="TuxPulse Dashboard" width="45%">
+  <img src="./assets/screenshots/5.0-1.1.png" alt="TuxPulse Installer" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-2.0.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-2.1.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-3.0.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-3.1.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-4.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-5.0.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-5.1.png" alt="TuxPulse Disk Analyzer" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-6.0.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-7.0.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-8.0.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-9.0.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-9.1.png" alt="TuxPulse Disk Analyzer" width="45%">
+  <img src="./assets/screenshots/5.0-9.3.png" alt="TuxPulse Maintenance" width="45%">
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/5.0-10.0.png" alt="TuxPulse Disk Analyzer" width="45%">
+</p>
+
 ## Distribution support
 
 ### Current packaging state
