@@ -1,190 +1,241 @@
-[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 ![Followers](https://img.shields.io/github/followers/eoliann?style=plastic&color=green)
 ![Watchers](https://img.shields.io/github/watchers/eoliann/TuxPulse?style=plastic)
 ![Stars](https://img.shields.io/github/stars/eoliann/TuxPulse?style=plastic)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue?style=plastic)](https://www.paypal.com/donate/?hosted_button_id=PTH2EXUDS423S)
 [![Donate](https://img.shields.io/badge/Donate-Revolut-8A2BE2?style=plastic)](http://revolut.me/adriannm9?style=plastic)
-
 ![Release Date](https://img.shields.io/github/release-date/eoliann/TuxPulse?style=plastic)
 ![Last Commit](https://img.shields.io/github/last-commit/eoliann/TuxPulse?style=plastic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
 ![OS](https://img.shields.io/badge/OS-Linux-blue?style=plastic)
 ![Lang](https://img.shields.io/badge/Lang-Python-magenta?style=plastic)
-
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
-![GitHub Downloads (specific asset, latest release)](https://img.shields.io/github/downloads/eoliann/TuxPulse/latest/tuxpulse.deb?displayAssetName=true&sort=date&style=plastic)
-![GitHub Downloads (specific asset, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/tuxpulse.deb?displayAssetName=true&style=plastic)
-
-
+![Total Downloads](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
 
 # TuxPulse
 
-TuxPulse is a desktop maintenance toolkit for Debian/Ubuntu-based systems.
+**TuxPulse** is a modern Linux maintenance toolkit with a PyQt desktop interface for updates, cleanup, monitoring, disk analysis, kernel cleanup suggestions, package inspection and application installation.
 
-## Main features
-- System update
-- System cleanup
-- Flatpak package update
-- systemd logs cleanup
-- thumbnail cleanup
-- live monitoring dashboard
-- modern graphical disk analysis
-- kernel analysis and suggested old-kernel removal
-- install apps from catalog
-- bilingual interface: English / Romanian (in dev)
+The project started with Debian/Ubuntu in mind, but the codebase is moving toward broader Linux support, especially for native package operations in the Installer and maintenance-related areas.
 
-🚀 New Features
+## What TuxPulse does
 
-## UI
-### Dashboard
-<img width="1460" height="984" alt="v4 0-1" src="https://github.com/user-attachments/assets/38eacb07-dc99-405f-bca0-3b5328ff47b1" />
+### System maintenance
+- update system packages
+- run upgrade and cleanup actions
+- update Flatpak packages when Flatpak is installed
+- launch grouped maintenance flows from a graphical interface
 
-### Maintenance
-<img width="1460" height="984" alt="v4 0-2" src="https://github.com/user-attachments/assets/cc783c5b-e9ed-4903-9838-a16fb5e36619" />
+### Live monitoring dashboard
+- CPU usage history
+- RAM usage history
+- disk usage history
+- network activity history
+- system summary panel
 
-### Disk
-<img width="1460" height="984" alt="v4 0-3" src="https://github.com/user-attachments/assets/c3717ec8-fc7c-453d-91ca-e193639a46e6" />
-<img width="1460" height="984" alt="v4 0-3 1" src="https://github.com/user-attachments/assets/cc9b5a9c-99e2-4ed1-b6fb-536c5a22e5fb" />
+### Disk analysis
+- root filesystem usage overview
+- largest directories in the home folder
+- largest files in the home folder
 
-### Kernel
-<img width="1460" height="984" alt="v4 0-4" src="https://github.com/user-attachments/assets/3f01ff3d-eee7-4d40-88fd-8cf4ac21b1d7" />
+### Kernel tools
+- detect current kernel
+- list installed kernels
+- suggest removable old kernels
+- generate removal commands based on the detected package manager
 
 ### Cleaner
-<img width="1460" height="984" alt="v4 0-5" src="https://github.com/user-attachments/assets/0ee51d72-df62-4677-a2aa-0e5409cd3a1d" />
+- thumbnail cache cleanup
+- user cache cleanup
+- trash cleanup
+- temporary files cleanup
+- journal vacuum
+- orphan package cleanup
 
-🧹 Improved Cleaner\
+### Package tools
+- list installed packages
+- list upgradable packages
+- remove packages
+- purge packages
 
-🔧 Unified Action System\
-✔ Main button logically renamed: Run action\
-✔ Functions integrated into the list:\
-✔ Remove orphan packages\
-✔ Vacuum journal (7 days)\
+> Note: the package inspection/removal layer is currently strongest on Debian/Ubuntu systems.
 
-🧠 Smart Cleanup (cross-distro)\
-✔ Debian/Ubuntu → apt autoremove\
+### App installer
+- categorized software catalog
+- native package install/remove/update
+- Flatpak install/remove/update
+- native/Flatpak availability detection
+- update detection for installed apps
+- bulk actions
+- live search
+- automatic source selection with Flatpak fallback when needed
 
-### Startup
-<img width="1460" height="984" alt="v4 0-6" src="https://github.com/user-attachments/assets/1b843bee-1f66-4ebf-aba6-82de77318912" />
+### System integration tabs
+- startup applications viewer/editor
+- system services viewer/manager
+- About tab with project links and release check
 
-### Services
-<img width="1460" height="984" alt="v4 0-7" src="https://github.com/user-attachments/assets/5f9a5f39-adb8-4f65-a68c-9979ec77ccda" />
+### User experience
+- English and Romanian interface
+- dark mode and light mode
+- sidebar navigation
+- modern card-based UI
 
-### Packages
-<img width="1460" height="984" alt="v4 0-8" src="https://github.com/user-attachments/assets/623aed24-9731-430f-8306-7abe85bbd3e1" />
+## Current support status
 
-### Installer
-<img width="1460" height="984" alt="v4 0-9" src="https://github.com/user-attachments/assets/94526409-df32-426a-944d-ca782c75095c" />
-<img width="1460" height="984" alt="v4 0-9 1" src="https://github.com/user-attachments/assets/09cb404c-a020-4243-80d0-1260ec0e07d4" />
+### Well covered today
+- **Debian / Ubuntu**
+  - source execution
+  - DEB package build
+  - privileged actions through packaged helper components
 
-### About
-<img width="1460" height="984" alt="v4 0-10" src="https://github.com/user-attachments/assets/0b127ac8-f03b-4ce8-b9af-09230b818a17" />
+### Source execution already relevant
+- **Fedora and other RPM-based distributions**
+  - source execution is practical once the runtime dependencies are installed
+  - parts of the app already include `dnf` / `rpm` logic
 
-🛒 Fully integrated App Store\
-Install apps by category (Browsers, Development, Multimedia, System Tools)\
-Dual support:\
-✔ Native packages (apt, pacman, dnf, zypper)\
-✔ Flatpak (automatic fallback)\
-✔ Live app search\
-✔ Multiple installation (bulk install)\
+- **openSUSE and similar distributions**
+  - source execution is practical once the runtime dependencies are installed
+  - parts of the app already include `zypper` logic
 
-🔄 Application Management\
-✔ Install applications\
-✔ Remove applications\
-✔ Update individual applications\
-✔ Bulk update\
-✔ Detection of already installed applications\
-
-🎯 Smart Source Selection\
-✔ Automatic deactivation of “Native” if the application does not exist in the repository\
-✔ Smart fallback to Flatpak\
-✔ Avoid installation errors\
-
-🔁 Auto Refresh UI\
-Automatic refresh after:\
-✔ install\
-✔ remove\
-✔ update\
-Eliminates the need to restart the application\
-Accurate real-time visual status\
-
-🎨 Improved UI\
-✔ Dark Mode / Light Mode\
-✔ Clearer interface for application selection\
-✔ Dedicated buttons per application\
-
-Language: [En]/[Ro]
-<img width="1460" height="912" alt="switching-language" src="https://github.com/user-attachments/assets/3f5de768-2961-46e1-b519-1e3f811c98c0" />
-
-Dark Mode / Light Mode
-<img width="1460" height="984" alt="v4 0-1 1" src="https://github.com/user-attachments/assets/9ab07eb9-399f-4aff-b0dc-a24cc4de0e54" />
-
-🔐 Enterprise Architecture
-
-🧱 Root Helper Service\
-✔ Complete UI/root separation\
-✔ Command execution via secure daemon\
-✔ Removal of pkexec dependency\
-
-🛡️ Security Hardening\
-✔ Strict command validation\
-✔ Controlled execution via package manager\
-✔ Protection against unauthorized execution\
-
-📜 Audit Logging\
-Complete log:\
-✔ user\
-✔ executed command\
-✔ output\
-Location: /var/log/tuxpulse.log\
-
-🧪 Improvements\
-✔ Improved overall stability\
-✔ Complete removal of scheduler (unstable across distros)\
-✔ Reduced command execution errors\
-✔ Better integration with Flatpak\
-
-🐞 Bug Fixes\
-✔ Fixed scheduler import crash\
-✔ Fixed pkexec incompatibility with VSCode / container\
-✔ Fixed Installer UI (incorrect button states)\
-✔ Fixed invalid source selection\
-✔ Fixed refresh after installation/uninstallation\
-✔ Fixed dark mode checkbox visibility\
+### In progress / to be aligned further
+- **Arch Linux**
+  - parts of the codebase already include `pacman` logic
+  - packaging and README instructions can be refined further as Arch support is finalized
 
 ## Dependencies
-Debian/Ubuntu
+
+Install the runtime dependencies with your distro package manager.
+
+### Debian / Ubuntu
 ```bash
-sudo apt install python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1 | policykid
+sudo apt update
+sudo apt install -y python3 python3-pyqt5 python3-psutil python3-matplotlib policykit-1
+```
+
+### Fedora / RPM-based
+```bash
+sudo dnf install -y python3 python3-qt5 python3-psutil python3-matplotlib polkit
+```
+
+### openSUSE
+```bash
+sudo zypper install -y python3 python3-qt5 python3-psutil python3-matplotlib polkit
+```
+
+### Arch Linux
+```bash
+sudo pacman -S --needed python python-pyqt5 python-psutil python-matplotlib polkit
+```
+
+### Optional but recommended
+```bash
+# for Flatpak app management inside TuxPulse
+flatpak
+
+# for service management tabs
+systemd / systemctl
 ```
 
 ## Run from source
-Debian/Ubuntu
+
+Clone the repository and run the application from the project root.
+
+### Debian / Ubuntu
 ```bash
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
 python3 app/main.py
 ```
 
-## Build .deb
+### Fedora / RPM-based
+```bash
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
+python3 app/main.py
+```
+
+### openSUSE
+```bash
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
+python3 app/main.py
+```
+
+### Arch Linux
+```bash
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
+python app/main.py
+```
+
+## Build a DEB package
+
+The repository already includes a dedicated DEB build script.
+
 ```bash
 chmod +x build_deb.sh
 ./build_deb.sh
 ```
 
+Expected result:
+- a `.deb` package is created in the `dist/` directory
+- the package version is read from `app/version.py`
+- the build includes the application, helper files, systemd service and polkit policy
+
+## RPM package build
+
+At the moment, the public repository should document **source execution for RPM-based distributions**, but the README should **not pretend that an RPM package builder already exists** unless `build_rpm.sh` and the corresponding `.spec` file are committed.
+
+A safe README position today is:
+- source execution on Fedora / RPM-based systems is documented and supported as a development workflow
+- native RPM packaging instructions will be added once the RPM build files are part of the repository
+
+## Arch packaging
+
+Arch support can be documented in two steps:
+- source execution, which is already straightforward
+- package build instructions, after the Arch packaging files and versioning are fully aligned
+
+## Privileged operations
+
+TuxPulse can use elevated privileges for administrative actions.
+
+Depending on how it is started, this can involve:
+- packaged helper components
+- polkit integration
+- `pkexec` or `sudo` fallback during source-based execution
+
+## Project structure
+
+```text
+TuxPulse/
+├── app/
+│   ├── core/
+│   ├── services/
+│   ├── ui/
+│   ├── main.py
+│   ├── ui_main.py
+│   └── version.py
+├── helper/
+├── packaging/
+│   ├── deb/
+│   ├── arch/
+│   ├── polkit/
+│   └── systemd/
+└── build_deb.sh
+```
+
 ## Notes
-- Administrative actions use `pkexec`.
-- Kernel cleanup removes only the packages suggested by the built-in analyzer. Review them before deletion.
-- Full Maintenance uses a single `pkexec` session, so the admin password should be requested once.
-- Startup and Services tabs are read-only in this preview.
-- Cleaner can wipe user cache targets directly and root targets through pkexec.
 
-## Custom icon
-Place your PNG icon here before building:
+- Kernel cleanup should always be reviewed before removal.
+- Service management requires `systemctl`.
+- Flatpak operations are shown only when Flatpak is available.
+- Running from source is the best path for development and testing across multiple distributions.
+- DEB packaging is currently the packaging workflow that is clearly present in the public repository.
 
-```bash
-assets/tuxpulse.png
-```
+## About
 
-The build script copies it to:
+- GitHub: https://github.com/eoliann/TuxPulse
+- Releases: https://github.com/eoliann/TuxPulse/releases
+- Issues: https://github.com/eoliann/TuxPulse/issues
 
-```bash
-packaging/deb/usr/share/icons/hicolor/256x256/apps/tuxpulse.png
-```
+TuxPulse is focused on giving Linux users a cleaner and more visual way to maintain their systems from one desktop application.
