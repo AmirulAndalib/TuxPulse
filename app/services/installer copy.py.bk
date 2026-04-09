@@ -8,13 +8,13 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
+# from core.helper_client import helper_available, send_request
 from core.pkg_backend import PackageBackend
 from core.privilege import elevated_command
 from services.apps_catalog import APPS
 
 _PACKAGE_BACKEND = PackageBackend()
 _SUPPORTED_BACKENDS = ("apt", "pacman", "dnf", "zypper")
-_FLATHUB_URL = "https://flathub.org/repo/flathub.flatpakrepo"
 
 
 # ===============================
@@ -27,9 +27,9 @@ def _normalize_backend_name(value: str | None) -> str:
         return ""
     if any(token in raw for token in ("apt", "debian", "ubuntu", "nala")):
         return "apt"
-    if any(token in raw for token in ("pacman", "arch", "manjaro", "endeavouros", "cachyos")):
+    if any(token in raw for token in ("pacman", "arch", "manjaro", "endeavouros")):
         return "pacman"
-    if any(token in raw for token in ("dnf", "fedora", "rhel", "rocky", "alma", "nobara")):
+    if any(token in raw for token in ("dnf", "fedora", "rhel", "rocky", "alma")):
         return "dnf"
     if any(token in raw for token in ("zypper", "opensuse", "suse")):
         return "zypper"
@@ -62,7 +62,7 @@ def backend_key() -> str:
         if normalized:
             return normalized
 
-    if shutil.which("apt") or shutil.which("apt-get"):
+    if shutil.which("apt"):
         return "apt"
     if shutil.which("pacman"):
         return "pacman"
@@ -98,7 +98,6 @@ def clear_runtime_caches() -> None:
     native_package_available.cache_clear()
     is_installed.cache_clear()
     is_flatpak_installed.cache_clear()
-    flatpak_scope_for_app.cache_clear()
     _get_native_upgradable_set.cache_clear()
     _get_flatpak_upgradable_set.cache_clear()
 
@@ -111,10 +110,12 @@ def get_categories() -> Dict[str, List[dict]]:
     return deepcopy(APPS)
 
 
+
 def _native_package_for(app: dict, manager: str | None = None) -> str:
     packages = app.get("packages") or {}
     manager = manager or backend_key()
     return (packages.get(manager) or "").strip()
+
 
 
 def _preferred_source(native_available: bool, flatpak_available: bool) -> str:
@@ -123,6 +124,7 @@ def _preferred_source(native_available: bool, flatpak_available: bool) -> str:
     if flatpak_available:
         return "flatpak"
     return "native"
+
 
 
 def _requested_source(app: dict, native_available: bool, flatpak_available: bool) -> str:
@@ -134,6 +136,7 @@ def _requested_source(app: dict, native_available: bool, flatpak_available: bool
     if source == "auto":
         return "auto"
     return _preferred_source(native_available, flatpak_available)
+
 
 
 def _search_blob(app: dict, category: str, native_package: str) -> str:
@@ -149,12 +152,12 @@ def _search_blob(app: dict, category: str, native_package: str) -> str:
 
 
 # ===============================
-# PROCESS HELPERS
+# PACKAGE AVAILABILITY / INSTALL STATE
 # ===============================
 
-def _run_capture(cmd: Sequence[str]) -> subprocess.CompletedProcess:
+def _run_quiet(cmd: Sequence[str]) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    if cmd and cmd[0] in {"apt", "apt-get", "dpkg", "apt-cache"}:
+    if cmd and cmd[0] in {"apt", "apt-get", "dpkg"}:
         env.setdefault("DEBIAN_FRONTEND", "noninteractive")
     return subprocess.run(
         list(cmd),
@@ -165,117 +168,6 @@ def _run_capture(cmd: Sequence[str]) -> subprocess.CompletedProcess:
     )
 
 
-def _run_live(cmd: Sequence[str], *, requires_root: bool = False) -> str:
-    final_cmd = list(cmd)
-    if requires_root:
-        final_cmd = elevated_command(final_cmd)
-
-    proc = subprocess.run(
-        final_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    output = (proc.stdout or "").strip()
-    if proc.returncode != 0:
-        raise RuntimeError(output or "Operation failed.")
-    return output
-
-
-# ===============================
-# FLATPAK HELPERS
-# ===============================
-
-def _flatpak_available() -> bool:
-    return shutil.which("flatpak") is not None
-
-
-def _flatpak_remote_exists(remote_name: str, scope: str) -> bool:
-    if not _flatpak_available():
-        return False
-
-    flag = "--user" if scope == "user" else "--system"
-    try:
-        proc = _run_capture(["flatpak", "remotes", flag, "--columns=name"])
-    except Exception:
-        return False
-
-    if proc.returncode != 0:
-        return False
-
-    remotes = {line.strip() for line in (proc.stdout or "").splitlines() if line.strip()}
-    return remote_name in remotes
-
-
-def _ensure_flathub(scope: str = "user") -> None:
-    if not _flatpak_available():
-        raise RuntimeError("Flatpak is not installed on this system.")
-
-    if _flatpak_remote_exists("flathub", scope):
-        return
-
-    if scope == "user":
-        _run_live(["flatpak", "remote-add", "--if-not-exists", "--user", "flathub", _FLATHUB_URL])
-    else:
-        _run_live(["flatpak", "remote-add", "--if-not-exists", "--system", "flathub", _FLATHUB_URL], requires_root=True)
-
-
-def _flatpak_info_installed(app_id: str, scope: str) -> bool:
-    if not app_id or not _flatpak_available():
-        return False
-
-    flag = "--user" if scope == "user" else "--system"
-    try:
-        proc = _run_capture(["flatpak", "info", flag, app_id])
-        return proc.returncode == 0
-    except Exception:
-        return False
-
-
-@lru_cache(maxsize=2048)
-def flatpak_scope_for_app(app_id: str) -> str | None:
-    if _flatpak_info_installed(app_id, "user"):
-        return "user"
-    if _flatpak_info_installed(app_id, "system"):
-        return "system"
-    return None
-
-
-@lru_cache(maxsize=2048)
-def is_flatpak_installed(app_id: str) -> bool:
-    return flatpak_scope_for_app(app_id) is not None
-
-
-def _run_flatpak_install_command(app_id: str, scope: str = "user") -> str:
-    _ensure_flathub(scope)
-
-    if scope == "user":
-        return _run_live(["flatpak", "install", "--user", "-y", "--noninteractive", "flathub", app_id])
-
-    return _run_live(
-        ["flatpak", "install", "--system", "-y", "--noninteractive", "flathub", app_id],
-        requires_root=True,
-    )
-
-
-def _run_flatpak_remove_command(app_id: str) -> str:
-    scope = flatpak_scope_for_app(app_id) or "user"
-    if scope == "user":
-        return _run_live(["flatpak", "uninstall", "--user", "-y", "--noninteractive", app_id])
-    return _run_live(["flatpak", "uninstall", "--system", "-y", "--noninteractive", app_id], requires_root=True)
-
-
-def _run_flatpak_update_command(app_id: str) -> str:
-    scope = flatpak_scope_for_app(app_id) or "user"
-    if scope == "user":
-        return _run_live(["flatpak", "update", "--user", "-y", "--noninteractive", app_id])
-    return _run_live(["flatpak", "update", "--system", "-y", "--noninteractive", app_id], requires_root=True)
-
-
-# ===============================
-# PACKAGE AVAILABILITY / INSTALL STATE
-# ===============================
-
 @lru_cache(maxsize=2048)
 def native_package_available(pkg_name: str, manager: str | None = None) -> bool:
     manager = manager or backend_key()
@@ -284,19 +176,19 @@ def native_package_available(pkg_name: str, manager: str | None = None) -> bool:
 
     try:
         if manager == "apt":
-            proc = _run_capture(["apt-cache", "show", pkg_name])
-            return proc.returncode == 0 and bool((proc.stdout or "").strip())
+            proc = _run_quiet(["apt-cache", "show", pkg_name])
+            return proc.returncode == 0 and bool(proc.stdout.strip())
 
         if manager == "pacman":
-            proc = _run_capture(["pacman", "-Si", "--", pkg_name])
+            proc = _run_quiet(["pacman", "-Si", "--", pkg_name])
             return proc.returncode == 0
 
         if manager == "dnf":
-            proc = _run_capture(["dnf", "-q", "info", pkg_name])
+            proc = _run_quiet(["dnf", "-q", "info", pkg_name])
             return proc.returncode == 0
 
         if manager == "zypper":
-            proc = _run_capture(["zypper", "--non-interactive", "info", pkg_name])
+            proc = _run_quiet(["zypper", "--non-interactive", "info", pkg_name])
             return proc.returncode == 0
     except Exception:
         return False
@@ -312,20 +204,33 @@ def is_installed(pkg_name: str, manager: str | None = None) -> bool:
 
     try:
         if manager == "apt":
-            proc = _run_capture(["dpkg", "-s", pkg_name])
+            proc = _run_quiet(["dpkg", "-s", pkg_name])
             return proc.returncode == 0
 
         if manager == "pacman":
-            proc = _run_capture(["pacman", "-Q", "--", pkg_name])
+            proc = _run_quiet(["pacman", "-Q", "--", pkg_name])
             return proc.returncode == 0
 
         if manager in {"dnf", "zypper"}:
-            proc = _run_capture(["rpm", "-q", pkg_name])
+            proc = _run_quiet(["rpm", "-q", pkg_name])
             return proc.returncode == 0
     except Exception:
         return False
 
     return False
+
+
+@lru_cache(maxsize=2048)
+def is_flatpak_installed(app_id: str) -> bool:
+    if not app_id or shutil.which("flatpak") is None:
+        return False
+
+    try:
+        proc = _run_quiet(["flatpak", "info", app_id])
+        return proc.returncode == 0
+    except Exception:
+        return False
+
 
 
 def app_state(app: dict) -> str:
@@ -358,6 +263,7 @@ def _parse_apt_updates(output: str) -> Set[str]:
     return updates
 
 
+
 def _parse_pacman_updates(output: str) -> Set[str]:
     updates: Set[str] = set()
     for line in output.splitlines():
@@ -366,6 +272,7 @@ def _parse_pacman_updates(output: str) -> Set[str]:
             continue
         updates.add(line.split()[0])
     return updates
+
 
 
 def _parse_dnf_updates(output: str) -> Set[str]:
@@ -383,6 +290,7 @@ def _parse_dnf_updates(output: str) -> Set[str]:
         else:
             updates.add(name_arch)
     return updates
+
 
 
 def _parse_zypper_updates(output: str) -> Set[str]:
@@ -414,12 +322,12 @@ def _get_native_upgradable_set() -> Set[str]:
 
     try:
         if manager == "apt":
-            proc = _run_capture(["apt", "list", "--upgradable"])
-            return _parse_apt_updates(proc.stdout or "")
+            proc = _run_quiet(["apt", "list", "--upgradable"])
+            return _parse_apt_updates(proc.stdout)
 
         if manager == "pacman":
-            proc = _run_capture(["pacman", "-Qu"])
-            return _parse_pacman_updates(proc.stdout or "")
+            proc = _run_quiet(["pacman", "-Qu"])
+            return _parse_pacman_updates(proc.stdout)
 
         if manager == "dnf":
             proc = subprocess.run(
@@ -430,38 +338,29 @@ def _get_native_upgradable_set() -> Set[str]:
             )
             if proc.returncode not in (0, 100):
                 return set()
-            return _parse_dnf_updates(proc.stdout or "")
+            return _parse_dnf_updates(proc.stdout)
 
         if manager == "zypper":
-            proc = _run_capture(["zypper", "--non-interactive", "list-updates"])
-            return _parse_zypper_updates(proc.stdout or "")
+            proc = _run_quiet(["zypper", "--non-interactive", "list-updates"])
+            return _parse_zypper_updates(proc.stdout)
     except Exception:
         return set()
 
     return set()
 
 
-def _flatpak_updates_for_scope(scope: str) -> Set[str]:
-    if not _flatpak_available():
-        return set()
-
-    flag = "--user" if scope == "user" else "--system"
-    try:
-        proc = _run_capture(["flatpak", "remote-ls", flag, "--updates", "--app", "--columns=application"])
-        if proc.returncode != 0:
-            return set()
-        return {
-            line.strip()
-            for line in (proc.stdout or "").splitlines()
-            if line.strip() and line.strip() != "application"
-        }
-    except Exception:
-        return set()
-
-
 @lru_cache(maxsize=1)
 def _get_flatpak_upgradable_set() -> Set[str]:
-    return _flatpak_updates_for_scope("user") | _flatpak_updates_for_scope("system")
+    if shutil.which("flatpak") is None:
+        return set()
+
+    try:
+        proc = _run_quiet(["flatpak", "remote-ls", "--updates", "--app", "--columns=application"])
+        if proc.returncode != 0:
+            return set()
+        return {line.strip() for line in proc.stdout.splitlines() if line.strip() and line.strip() != "application"}
+    except Exception:
+        return set()
 
 
 # ===============================
@@ -562,6 +461,7 @@ def apps_for_display(search: str = "") -> Dict[str, List[dict]]:
     return result
 
 
+
 def _sort_key(app: dict) -> Tuple[int, str]:
     if app.get("update_available"):
         rank = 0
@@ -581,11 +481,44 @@ def _sort_key(app: dict) -> Tuple[int, str]:
 # COMMAND EXECUTION
 # ===============================
 
+def _with_noninteractive_env(cmd: Sequence[str]) -> List[str]:
+    if not cmd:
+        return []
+    if cmd[0] in {"apt", "apt-get", "dpkg"}:
+        return ["env", "DEBIAN_FRONTEND=noninteractive"] + list(cmd)
+    return list(cmd)
+
+
+
+def _run_command(cmd: Sequence[str], action: str) -> str:
+    safe_cmd = _with_noninteractive_env(cmd)
+
+    if helper_available():
+        response = send_request({"action": action, "cmd": safe_cmd})
+        if response.get("code", 1) != 0:
+            raise RuntimeError(response.get("output", "Operation failed."))
+        return response.get("output", "").strip()
+
+    elevated = elevated_command(safe_cmd)
+    proc = subprocess.run(
+        elevated,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stdout.strip() or "Operation failed.")
+
+    return proc.stdout.strip()
+
+
+
 def _native_install_command(packages: Sequence[str]) -> List[str]:
     manager = backend_key()
     packages = [pkg for pkg in packages if pkg]
     if manager == "apt":
-        return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y"] + packages
+        return ["apt", "install", "-y"] + packages
     if manager == "pacman":
         return ["pacman", "-S", "--noconfirm", "--needed"] + packages
     if manager == "dnf":
@@ -595,11 +528,12 @@ def _native_install_command(packages: Sequence[str]) -> List[str]:
     raise RuntimeError(f"Unsupported backend: {manager}")
 
 
+
 def _native_remove_command(packages: Sequence[str]) -> List[str]:
     manager = backend_key()
     packages = [pkg for pkg in packages if pkg]
     if manager == "apt":
-        return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "remove", "-y"] + packages
+        return ["apt", "remove", "-y"] + packages
     if manager == "pacman":
         return ["pacman", "-R", "--noconfirm"] + packages
     if manager == "dnf":
@@ -609,11 +543,12 @@ def _native_remove_command(packages: Sequence[str]) -> List[str]:
     raise RuntimeError(f"Unsupported backend: {manager}")
 
 
+
 def _native_update_command(packages: Sequence[str]) -> List[str]:
     manager = backend_key()
     packages = [pkg for pkg in packages if pkg]
     if manager == "apt":
-        return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "--only-upgrade", "-y"] + packages
+        return ["apt", "install", "-y"] + packages
     if manager == "pacman":
         return ["pacman", "-S", "--noconfirm"] + packages
     if manager == "dnf":
@@ -623,64 +558,70 @@ def _native_update_command(packages: Sequence[str]) -> List[str]:
     raise RuntimeError(f"Unsupported backend: {manager}")
 
 
+
 def install_native_packages(packages: List[str]) -> str:
     packages = _deduplicate(packages)
     if not packages:
         return ""
-    output = _run_live(_native_install_command(packages), requires_root=True)
+    output = _run_command(_native_install_command(packages), action="install")
     clear_runtime_caches()
     return output
+
 
 
 def remove_native_packages(packages: List[str]) -> str:
     packages = _deduplicate(packages)
     if not packages:
         return ""
-    output = _run_live(_native_remove_command(packages), requires_root=True)
+    output = _run_command(_native_remove_command(packages), action="remove")
     clear_runtime_caches()
     return output
+
 
 
 def update_native_packages(packages: List[str]) -> str:
     packages = _deduplicate(packages)
     if not packages:
         return ""
-    output = _run_live(_native_update_command(packages), requires_root=True)
+    output = _run_command(_native_update_command(packages), action="update")
     clear_runtime_caches()
     return output
 
 
+
 def install_flatpak_apps(app_ids: List[str]) -> str:
-    if not _flatpak_available():
+    if shutil.which("flatpak") is None:
         raise RuntimeError("Flatpak is not installed on this system.")
 
     output_parts = []
     for app_id in _deduplicate(app_ids):
-        output_parts.append(_run_flatpak_install_command(app_id, scope="user"))
+        output_parts.append(_run_command(["flatpak", "install", "-y", "flathub", app_id], action="install"))
 
     clear_runtime_caches()
     return "\n".join(part for part in output_parts if part)
+
 
 
 def remove_flatpak_apps(app_ids: List[str]) -> str:
-    if not _flatpak_available():
+    if shutil.which("flatpak") is None:
         raise RuntimeError("Flatpak is not installed on this system.")
 
     output_parts = []
     for app_id in _deduplicate(app_ids):
-        output_parts.append(_run_flatpak_remove_command(app_id))
+        output_parts.append(_run_command(["flatpak", "uninstall", "-y", app_id], action="remove"))
 
     clear_runtime_caches()
     return "\n".join(part for part in output_parts if part)
 
 
+
 def update_flatpak_apps(app_ids: List[str]) -> str:
-    if not _flatpak_available():
+    if shutil.which("flatpak") is None:
         raise RuntimeError("Flatpak is not installed on this system.")
 
     output_parts = []
     for app_id in _deduplicate(app_ids):
-        output_parts.append(_run_flatpak_update_command(app_id))
+        output_parts.append(_run_command(["flatpak", "update", "-y", app_id], action="update"))
 
     clear_runtime_caches()
     return "\n".join(part for part in output_parts if part)
@@ -757,11 +698,13 @@ def _collect(selection: List[dict], mode: str) -> Tuple[List[str], List[str], Li
     return _deduplicate(native_packages), _deduplicate(flatpak_ids), errors
 
 
+
 def _finalize_outputs(outputs: List[str], errors: List[str], empty_message: str) -> str:
     cleaned_outputs = [part.strip() for part in outputs if part and part.strip()]
     if errors:
         cleaned_outputs.append("Skipped:\n- " + "\n- ".join(errors))
     return "\n\n".join(cleaned_outputs).strip() or empty_message
+
 
 
 def install_apps(selection: List[dict]) -> str:
@@ -776,6 +719,7 @@ def install_apps(selection: List[dict]) -> str:
     return _finalize_outputs(outputs, errors, "Nothing to install.")
 
 
+
 def remove_apps(selection: List[dict]) -> str:
     native_packages, flatpak_ids, errors = _collect(selection, "remove")
     outputs: List[str] = []
@@ -788,6 +732,7 @@ def remove_apps(selection: List[dict]) -> str:
     return _finalize_outputs(outputs, errors, "Nothing to remove.")
 
 
+
 def update_apps(selection: List[dict]) -> str:
     native_packages, flatpak_ids, errors = _collect(selection, "update")
     outputs: List[str] = []
@@ -798,20 +743,3 @@ def update_apps(selection: List[dict]) -> str:
         outputs.append(update_flatpak_apps(flatpak_ids))
 
     return _finalize_outputs(outputs, errors, "Nothing to update.")
-
-
-def install_one_app(app: dict) -> str:
-    return install_apps([app])
-
-
-def remove_one_app(app: dict) -> str:
-    return remove_apps([app])
-
-
-def update_one_app(app: dict) -> str:
-    return update_apps([app])
-
-
-def helper_available(timeout: float = 2.0) -> bool:
-    del timeout
-    return False

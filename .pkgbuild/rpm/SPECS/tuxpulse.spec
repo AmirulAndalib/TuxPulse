@@ -1,5 +1,5 @@
 Name:           tuxpulse
-Version:        5.1
+Version:        5.2
 Release:        1%{?dist}
 Summary:        Linux maintenance toolkit
 License:        GPL-3.0-or-later
@@ -16,7 +16,6 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 mkdir -p %{buildroot}%{_datadir}/tuxpulse
 
 cp -a %{_sourcedir}/app %{buildroot}%{_datadir}/tuxpulse/
-cp -a %{_sourcedir}/helper %{buildroot}%{_datadir}/tuxpulse/ 2>/dev/null || true
 
 cat > %{buildroot}%{_bindir}/tuxpulse <<'LAUNCHER_EOF'
 #!/usr/bin/env bash
@@ -52,5 +51,5 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor -f -q || true
 %{_datadir}/tuxpulse
 
 %changelog
-* Wed Apr 08 2026 TuxPulse Team - 5.1-1
-- Release v5.1
+* Thu Apr 09 2026 TuxPulse Team - 5.2-1
+- Release v5.2

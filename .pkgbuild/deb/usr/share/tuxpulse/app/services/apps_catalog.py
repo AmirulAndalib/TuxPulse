@@ -1,3 +1,19 @@
+#!/usr/bin/env python3
+"""
+TuxPulse - Applications Catalog
+Catalog complet + logică avansată de stare (instalat / nativ / flatpak / update)
+"""
+
+from __future__ import annotations
+
+import subprocess
+import shutil
+from copy import deepcopy
+from functools import lru_cache
+from typing import Dict, List
+
+from core.pkg_backend import PackageBackend
+
 APPS = {'Browsers': [{'id': 'firefox',
                'name': 'Firefox',
                'description': 'Fast, privacy-focused web browser.',
@@ -366,14 +382,12 @@ APPS = {'Browsers': [{'id': 'firefox',
                'flatpak': 'com.protonvpn.www'},
               {'id': 'mullvad-vpn',
                'name': 'Mullvad VPN',
-               'description': 'Privacy-focused VPN client. Native packages are officially provided for Debian/Ubuntu '
-                              'and Fedora.',
+               'description': 'Privacy-focused VPN client.',
                'icon': 'network-vpn',
                'packages': {'apt': 'mullvad-vpn', 'pacman': '', 'dnf': 'mullvad-vpn', 'zypper': ''}},
               {'id': 'wireshark',
                'name': 'Wireshark',
-               'description': 'Network protocol analyzer. Flatpak build is mainly for opening captures, not packet '
-                              'capture.',
+               'description': 'Network protocol analyzer.',
                'icon': 'network-workgroup',
                'packages': {'apt': 'wireshark', 'pacman': 'wireshark-qt', 'dnf': 'wireshark', 'zypper': 'wireshark-qt'},
                'flatpak': 'org.wireshark.Wireshark'}],
@@ -385,7 +399,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                 'flatpak': 'com.github.tchx84.Flatseal'},
                {'id': 'warehouse',
                 'name': 'Warehouse',
-                'description': 'Graphical manager for Flatpak applications, remotes, data and snapshots.',
+                'description': 'Graphical manager for Flatpak applications.',
                 'icon': 'system-software-install',
                 'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                 'flatpak': 'io.github.flattool.Warehouse'},
@@ -397,7 +411,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                 'flatpak': 'org.bleachbit.BleachBit'},
                {'id': 'simplescreenrecorder',
                 'name': 'Simple screen recorder',
-                'description': 'Feature-rich screen recorder for X11 and OpenGL',
+                'description': 'Feature-rich screen recorder.',
                 'icon': 'display',
                 'packages': {'apt': 'simplescreenrecorder',
                              'pacman': 'simplescreenrecorder',
@@ -420,8 +434,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                      'flatpak': 'org.gnome.Boxes'},
                     {'id': 'virt-manager',
                      'name': 'Virtual Machine Manager',
-                     'description': 'Advanced libvirt manager. Flatpak build is client-only and does not include '
-                                    'libvirt or QEMU.',
+                     'description': 'Advanced libvirt manager.',
                      'icon': 'computer',
                      'packages': {'apt': 'virt-manager',
                                   'pacman': 'virt-manager',
@@ -430,8 +443,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                      'flatpak': 'org.virt_manager.virt-manager'},
                     {'id': 'virtualbox',
                      'name': 'Oracle VM VirtualBox',
-                     'description': 'Desktop virtualization solution. Requires kernel modules and may need extra '
-                                    'repositories or DKMS on some distros.',
+                     'description': 'Desktop virtualization solution.',
                      'icon': 'computer',
                      'packages': {'apt': 'virtualbox',
                                   'pacman': 'virtualbox',
@@ -493,27 +505,25 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'net.cozic.joplin_desktop'},
                   {'id': 'obsidian',
                    'name': 'Obsidian',
-                   'description': 'Knowledge base and Markdown note-taking app. Arch has a native repo package; '
-                                  'elsewhere Flatpak/AppImage is usually the easiest route.',
+                   'description': 'Knowledge base and Markdown note-taking app.',
                    'icon': 'accessories-text-editor',
                    'packages': {'apt': '', 'pacman': 'obsidian', 'dnf': '', 'zypper': ''},
                    'flatpak': 'md.obsidian.Obsidian'},
                   {'id': 'notion',
                    'name': 'Notion (Cohesion)',
-                   'description': 'Unofficial Linux desktop client for Notion using an Electron wrapper.',
+                   'description': 'Unofficial Linux desktop client for Notion.',
                    'icon': 'accessories-text-editor',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'io.github.brunofin.Cohesion'},
                   {'id': 'appflowy',
                    'name': 'AppFlowy',
-                   'description': 'Open-source workspace for notes, tasks and databases; a privacy-first alternative '
-                                  'to Notion.',
+                   'description': 'Open-source workspace for notes, tasks and databases.',
                    'icon': 'accessories-text-editor',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'io.appflowy.AppFlowy'},
                   {'id': 'anytype',
                    'name': 'Anytype',
-                   'description': 'Local-first workspace and knowledge base for notes, tasks and documents.',
+                   'description': 'Local-first workspace and knowledge base.',
                    'icon': 'accessories-text-editor',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'io.anytype.anytype'},
@@ -531,7 +541,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'com.logseq.Logseq'},
                   {'id': 'super-productivity',
                    'name': 'Super Productivity',
-                   'description': 'Task manager with time tracking and Pomodoro tools.',
+                   'description': 'Task manager with time tracking.',
                    'icon': 'view-calendar-tasks',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'com.super_productivity.SuperProductivity'},
@@ -543,13 +553,13 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'com.todoist.Todoist'},
                   {'id': 'ticktick',
                    'name': 'TickTick',
-                   'description': 'Task manager with reminders and calendar views.',
+                   'description': 'Task manager with reminders.',
                    'icon': 'view-calendar-tasks',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'com.ticktick.TickTick'},
                   {'id': 'zotero',
                    'name': 'Zotero',
-                   'description': 'Reference manager for research materials and citations.',
+                   'description': 'Reference manager for research materials.',
                    'icon': 'x-office-document',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'org.zotero.Zotero'},
@@ -561,8 +571,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'com.github.xournalpp.xournalpp'},
                   {'id': 'drawio',
                    'name': 'draw.io Desktop',
-                   'description': 'Diagramming app for flowcharts, UML, mind maps, network diagrams and lesson '
-                                  'materials.',
+                   'description': 'Diagramming app.',
                    'icon': 'x-office-drawing',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'com.jgraph.drawio.desktop'},
@@ -574,8 +583,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'net.ankiweb.Anki'}],
  'Gaming': [{'id': 'steam',
              'name': 'Steam',
-             'description': 'Gaming platform by Valve. Native packages are generally preferred when available; the '
-                            'Flatpak is community-maintained.',
+             'description': 'Gaming platform by Valve.',
              'icon': 'steam',
              'packages': {'apt': 'steam', 'pacman': 'steam', 'dnf': 'steam', 'zypper': 'steam'},
              'flatpak': 'com.valvesoftware.Steam'},
@@ -605,31 +613,31 @@ APPS = {'Browsers': [{'id': 'firefox',
              'flatpak': 'org.prismlauncher.PrismLauncher'}],
  'Education': [{'id': 'geogebra',
                 'name': 'GeoGebra',
-                'description': 'Dynamic mathematics software for graphs, geometry and algebra.',
+                'description': 'Dynamic mathematics software.',
                 'icon': 'accessories-calculator',
                 'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                 'flatpak': 'org.geogebra.GeoGebra'},
                {'id': 'stellarium',
                 'name': 'Stellarium',
-                'description': 'Desktop planetarium for exploring the night sky.',
+                'description': 'Desktop planetarium.',
                 'icon': 'applications-science',
                 'packages': {'apt': 'stellarium', 'pacman': 'stellarium', 'dnf': 'stellarium', 'zypper': 'stellarium'},
                 'flatpak': 'org.stellarium.Stellarium'},
                {'id': 'kiwix',
                 'name': 'Kiwix',
-                'description': 'Offline reader for Wikipedia and other ZIM content.',
+                'description': 'Offline reader for Wikipedia.',
                 'icon': 'text-html',
                 'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                 'flatpak': 'org.kiwix.desktop'},
                {'id': 'freecad',
                 'name': 'FreeCAD',
-                'description': 'Parametric 3D CAD modeler useful for learning design and engineering basics.',
+                'description': 'Parametric 3D CAD modeler.',
                 'icon': 'applications-engineering',
                 'packages': {'apt': 'freecad', 'pacman': 'freecad', 'dnf': 'freecad', 'zypper': 'FreeCAD'},
                 'flatpak': 'org.freecad.FreeCAD'},
                {'id': 'octave',
                 'name': 'GNU Octave',
-                'description': 'Numerical computing environment useful for students, teachers and engineers.',
+                'description': 'Numerical computing environment.',
                 'icon': 'accessories-calculator',
                 'packages': {'apt': 'octave', 'pacman': 'octave', 'dnf': 'octave', 'zypper': 'octave'},
                 'flatpak': 'org.octave.Octave'},
@@ -641,7 +649,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                 'flatpak': 'org.kde.marble'},
                {'id': 'gcompris',
                 'name': 'GCompris',
-                'description': 'Educational suite with many activities for children.',
+                'description': 'Educational suite for children.',
                 'icon': 'applications-education',
                 'packages': {'apt': 'gcompris-qt',
                              'pacman': 'gcompris-qt',
@@ -650,7 +658,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                 'flatpak': 'org.kde.gcompris'}],
  'Networking': [{'id': 'remmina',
                  'name': 'Remmina',
-                 'description': 'Remote desktop client for RDP, VNC, SSH and more.',
+                 'description': 'Remote desktop client.',
                  'icon': 'preferences-desktop-remote-desktop',
                  'packages': {'apt': 'remmina', 'pacman': 'remmina', 'dnf': 'remmina', 'zypper': 'remmina'},
                  'flatpak': 'org.remmina.Remmina'},
@@ -671,7 +679,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                  'flatpak': 'com.transmissionbt.Transmission'},
                 {'id': 'qbittorrent',
                  'name': 'qBittorrent',
-                 'description': 'BitTorrent client with RSS, search and remote UI support.',
+                 'description': 'BitTorrent client.',
                  'icon': 'folder-download',
                  'packages': {'apt': 'qbittorrent',
                               'pacman': 'qbittorrent',
@@ -680,7 +688,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                  'flatpak': 'org.qbittorrent.qBittorrent'},
                 {'id': 'deluge',
                  'name': 'Deluge',
-                 'description': 'BitTorrent client with a client/server architecture.',
+                 'description': 'BitTorrent client.',
                  'icon': 'folder-download',
                  'packages': {'apt': 'deluge', 'pacman': 'deluge', 'dnf': 'deluge', 'zypper': 'deluge'},
                  'flatpak': 'org.deluge_torrent.deluge'},
@@ -698,7 +706,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                  'flatpak': 'org.localsend.localsend_app'},
                 {'id': 'nextcloud',
                  'name': 'Nextcloud Desktop Client',
-                 'description': 'File sync and collaboration client for personal or self-hosted clouds.',
+                 'description': 'File sync and collaboration client.',
                  'icon': 'folder-cloud',
                  'packages': {'apt': 'nextcloud-desktop',
                               'pacman': 'nextcloud-client',
@@ -707,7 +715,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                  'flatpak': 'com.nextcloud.desktopclient.nextcloud'},
                 {'id': 'warp',
                  'name': 'Warp',
-                 'description': 'Simple secure file transfer using Magic Wormhole.',
+                 'description': 'Simple secure file transfer.',
                  'icon': 'folder-upload',
                  'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                  'flatpak': 'app.drey.Warp'},
@@ -740,13 +748,13 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'flatpak': 'com.github.oguzhaninan.Stacer'},
                   {'id': 'mission-center',
                    'name': 'Mission Center',
-                   'description': 'Modern system monitor with resource and process views.',
+                   'description': 'Modern system monitor.',
                    'icon': 'utilities-system-monitor',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'io.missioncenter.MissionCenter'},
                   {'id': 'resources',
                    'name': 'Resources',
-                   'description': 'Simple GNOME system monitor and process viewer.',
+                   'description': 'Simple GNOME system monitor.',
                    'icon': 'utilities-system-monitor',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'net.nokyan.Resources'},
@@ -765,7 +773,7 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'packages': {'apt': 'gparted', 'pacman': 'gparted', 'dnf': 'gparted', 'zypper': 'gparted'}},
                   {'id': 'baobab',
                    'name': 'Disk Usage Analyzer',
-                   'description': 'Analyze disk usage and find large folders quickly.',
+                   'description': 'Analyze disk usage.',
                    'icon': 'drive-harddisk',
                    'packages': {'apt': 'baobab', 'pacman': 'baobab', 'dnf': 'baobab', 'zypper': 'baobab'},
                    'flatpak': 'org.gnome.baobab'},
@@ -776,22 +784,146 @@ APPS = {'Browsers': [{'id': 'firefox',
                    'packages': {'apt': 'timeshift', 'pacman': 'timeshift', 'dnf': 'timeshift', 'zypper': 'timeshift'}},
                   {'id': 'pika-backup',
                    'name': 'Pika Backup',
-                   'description': 'Simple backup application using BorgBackup.',
+                   'description': 'Simple backup application.',
                    'icon': 'document-save',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'org.gnome.World.PikaBackup'},
                   {'id': 'cpu-x',
                    'name': 'CPU-X',
-                   'description': 'Hardware information and monitoring utility.',
+                   'description': 'Hardware information utility.',
                    'icon': 'computer',
                    'packages': {'apt': '', 'pacman': '', 'dnf': '', 'zypper': ''},
                    'flatpak': 'io.github.thetumultuousunicornofdarkness.cpu-x'},
                   {'id': 'gnome-logs',
                    'name': 'Logs',
-                   'description': 'View and search entries from the systemd journal.',
+                   'description': 'View systemd journal.',
                    'icon': 'text-x-log',
                    'packages': {'apt': 'gnome-logs',
                                 'pacman': 'gnome-logs',
                                 'dnf': 'gnome-logs',
                                 'zypper': 'gnome-logs'},
                    'flatpak': 'org.gnome.Logs'}]}
+
+# ==================== LOGICA COMPLETĂ ====================
+
+_PACKAGE_BACKEND = PackageBackend()
+
+
+@lru_cache(maxsize=2048)
+def is_installed(pkg_name: str, manager: str | None = None) -> bool:
+    manager = manager or _PACKAGE_BACKEND.pm
+    if not pkg_name:
+        return False
+    try:
+        if manager == "apt":
+            return subprocess.run(["dpkg", "-s", pkg_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if manager == "pacman":
+            return subprocess.run(["pacman", "-Q", pkg_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if manager in ("dnf", "zypper"):
+            return subprocess.run(["rpm", "-q", pkg_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    except Exception:
+        return False
+    return False
+
+
+@lru_cache(maxsize=2048)
+def is_flatpak_installed(app_id: str) -> bool:
+    if not app_id or shutil.which("flatpak") is None:
+        return False
+    try:
+        return subprocess.run(["flatpak", "info", app_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    except Exception:
+        return False
+
+
+def app_state(app: dict) -> str:
+    manager = _PACKAGE_BACKEND.pm
+    native_package = (app.get("packages", {}).get(manager) or "").strip()
+    flatpak_id = (app.get("flatpak") or "").strip()
+
+    if native_package and is_installed(native_package, manager):
+        return "installed-native"
+    if flatpak_id and is_flatpak_installed(flatpak_id):
+        return "installed-flatpak"
+    if native_package:
+        return "available-native"
+    if flatpak_id:
+        return "available-flatpak"
+    return "unavailable"
+
+
+def apps_for_display(search: str = "") -> Dict[str, List[dict]]:
+    """Funcția principală cerută de InstallerTab"""
+    query = search.lower().strip()
+    result: Dict[str, List[dict]] = {}
+
+    for category, apps in APPS.items():
+        visible = []
+
+        for app in apps:
+            enriched = deepcopy(app)
+            native_package = (app.get("packages", {}).get(_PACKAGE_BACKEND.pm) or "").strip()
+            flatpak_id = (app.get("flatpak") or "").strip()
+
+            state = app_state(app)
+
+            enriched["native_package"] = native_package
+            enriched["native_available"] = bool(native_package)
+            enriched["flatpak_available"] = bool(flatpak_id)
+            enriched["state"] = state
+            enriched["source"] = "native" if native_package else "flatpak"
+
+            # Construim dict-ul "ui" exact cum așteaptă InstallerCard
+            ui = {
+                "can_install": state in ("available-native", "available-flatpak"),
+                "can_remove": state in ("installed-native", "installed-flatpak"),
+                "can_update": False,   # poți îmbunătăți mai târziu
+                "color_name": "white",
+                "badge": "",
+                "status_key": "installer_available",
+            }
+
+            if state == "installed-native":
+                ui.update({
+                    "can_remove": True,
+                    "color_name": "white",
+                    "status_key": "installer_installed_native",
+                })
+            elif state == "installed-flatpak":
+                ui.update({
+                    "can_remove": True,
+                    "color_name": "white",
+                    "status_key": "installer_installed_flatpak",
+                })
+            elif state == "available-native":
+                ui.update({
+                    "can_install": True,
+                    "color_name": "green",
+                    "status_key": "installer_available",
+                })
+            elif state == "available-flatpak":
+                ui.update({
+                    "can_install": True,
+                    "color_name": "orange",
+                    "status_key": "installer_available_flatpak",
+                })
+            else:
+                ui.update({
+                    "color_name": "red",
+                    "status_key": "installer_unavailable",
+                })
+
+            enriched["ui"] = ui
+
+            # Filtrare după căutare
+            if query:
+                text = f"{app.get('name','')} {app.get('description','')} {category}".lower()
+                if query not in text:
+                    continue
+
+            visible.append(enriched)
+
+        if visible:
+            result[category] = visible
+
+    return result

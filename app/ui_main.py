@@ -34,7 +34,7 @@ from core.i18n import I18N
 from core.runner import CommandRunner
 from services.cleaner import clean_target, get_cleaner_targets, run_clean_command
 from services.disk_analyzer import build_disk_analysis
-from services.installer import apps_for_display, install_apps, remove_apps, update_apps
+from services.installer import apps_for_display, clear_runtime_caches, install_apps, refresh_apps_state, remove_apps, update_apps
 from services.kernels import get_kernel_report, removal_commands_for_suggested
 from services.monitor import MonitorService
 from services.packages import (
@@ -469,6 +469,10 @@ class MainWindow(QMainWindow):
         self._installer_search_timer.setSingleShot(True)
         self._installer_search_timer.setInterval(1000)
         self._installer_search_timer.timeout.connect(self._run_pending_installer_refresh)
+        self._installer_last_mode = ""
+        self._installer_last_selection = []
+        self._installer_job_had_error = False
+        self._installer_job_had_error = False
         self._blur = None
 
         self.maintenance_had_error = False
@@ -2131,6 +2135,9 @@ class MainWindow(QMainWindow):
         if self.installer_worker is not None and self.installer_worker.isRunning():
             self.notify(self._tr("maintenance_running", "Another background job is already running.", "O altă operațiune rulează deja."))
             return
+        self._installer_last_mode = mode
+        self._installer_last_selection = [dict(item) for item in selection]
+        self._installer_job_had_error = False
         self.show_busy_overlay(overlay_text, self._tr("please_wait", "Please wait...", "Te rog așteaptă..."))
         self.installer_worker = InstallerWorker(selection, mode=mode)
         self.installer_worker.output_signal.connect(self.on_installer_output)
@@ -2144,19 +2151,60 @@ class MainWindow(QMainWindow):
             self.append_log(output)
 
     def on_installer_error(self, message: str):
+        self._installer_job_had_error = True
         QMessageBox.critical(self, "Error", message)
         self.append_log(f"Installer error: {message}")
+
+    def _apply_installer_real_refresh(self):
+        if not self._installer_last_selection:
+            return
+
+        try:
+            refreshed = refresh_apps_state(self._installer_last_selection)
+        except Exception as exc:
+            self.append_log(f"Installer refresh warning: {exc}")
+            refreshed = {}
+
+        for chosen in self._installer_last_selection:
+            app_id = chosen.get("id")
+            if not app_id:
+                continue
+
+            source = (chosen.get("source") or "native").strip().lower()
+            updated_app = dict(refreshed.get(app_id) or chosen)
+
+            if source in {"native", "flatpak"}:
+                updated_app["source"] = source
+
+            updated_app["selected"] = False
+
+            card = self.installer_tab.cards.get(app_id)
+            if card is not None:
+                card.update_data(updated_app)
+
+            self.installer_tab._app_cache[app_id] = dict(updated_app)
+            self.installer_tab._selection_state[app_id] = {
+                "selected": False,
+                "source": updated_app.get("source", source),
+                "app": dict(updated_app),
+            }
+
+        self.installer_tab._refresh_stats()
+        self.installer_tab._refresh_bulk_buttons()
 
     def on_installer_finished(self):
         self.installer_worker = None
         self.hide_busy_overlay()
-        self.refresh_installer_catalog(self.installer_tab.search.text())
-        if self._loaded_sections["packages"]:
-            self.refresh_packages(update_title_only=False)
-        else:
-            self.refresh_packages(update_title_only=True)
+        clear_runtime_caches()
+        if not self._installer_job_had_error:
+            self._apply_installer_real_refresh()
+        QTimer.singleShot(1500, lambda: self.refresh_installer_catalog(self.installer_tab.search.text()))
+        self.refresh_packages(update_title_only=True)
         self.refresh_cleaner_targets()
         self._loaded_sections["cleaner"] = True
+        self._installer_last_mode = ""
+        self._installer_last_selection = []
+        self._installer_job_had_error = False
         QApplication.processEvents()
         self.notify(self._tr("installer_done", "Installer action completed.", "Operațiunea Installer s-a încheiat."))
 

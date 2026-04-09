@@ -48,7 +48,6 @@ mkdir -p "$DEB_BUILD/usr/share/tuxpulse" "$DEB_BUILD/usr/bin" "$DEB_BUILD/usr/sh
          "$DEB_BUILD/usr/share/icons/hicolor/256x256/apps" "$DEB_BUILD/DEBIAN"
 
 cp -a "$ROOT_DIR/app" "$DEB_BUILD/usr/share/tuxpulse/"
-cp -a "$ROOT_DIR/helper" "$DEB_BUILD/usr/share/tuxpulse/" 2>/dev/null || true
 
 cat > "$DEB_BUILD/usr/bin/tuxpulse" <<'LAUNCHER'
 #!/usr/bin/env bash
@@ -111,7 +110,6 @@ else
     mkdir -p "$RPM_BUILD/SPECS" "$RPM_BUILD/SOURCES"
 
     cp -a "$ROOT_DIR/app" "$RPM_BUILD/SOURCES/"
-    cp -a "$ROOT_DIR/helper" "$RPM_BUILD/SOURCES/" 2>/dev/null || true
 
     RPM_ICON_INSTALL=""
     RPM_ICON_FILE=""
@@ -140,7 +138,6 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 mkdir -p %{buildroot}%{_datadir}/tuxpulse
 
 cp -a %{_sourcedir}/app %{buildroot}%{_datadir}/tuxpulse/
-cp -a %{_sourcedir}/helper %{buildroot}%{_datadir}/tuxpulse/ 2>/dev/null || true
 
 cat > %{buildroot}%{_bindir}/tuxpulse <<'LAUNCHER_EOF'
 #!/usr/bin/env bash

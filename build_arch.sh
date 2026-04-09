@@ -61,7 +61,7 @@ trap 'rm -rf "$WORKSPACE"' EXIT
 SRCROOT="$WORKSPACE/src/${APP_NAME}-${VERSION}"
 mkdir -p "$SRCROOT"
 
-for item in app packaging assets helper LICENSE LICENSE.md README.md; do
+for item in app packaging assets LICENSE LICENSE.md README.md; do
   if [[ -e "$ROOT_DIR/$item" ]]; then
     cp -a "$ROOT_DIR/$item" "$SRCROOT/"
   fi
@@ -86,10 +86,6 @@ package() {
 
     install -dm755 "\$pkgdir/usr/share/tuxpulse"
     cp -a app "\$pkgdir/usr/share/tuxpulse/"
-
-    if [[ -d helper ]]; then
-        cp -a helper "\$pkgdir/usr/share/tuxpulse/"
-    fi
 
     if [[ -f packaging/deb/usr/bin/tuxpulse ]]; then
         install -Dm755 packaging/deb/usr/bin/tuxpulse "\$pkgdir/usr/bin/tuxpulse"
@@ -126,18 +122,6 @@ DESKTOP
         install -Dm644 packaging/deb/usr/share/icons/hicolor/256x256/apps/tuxpulse.png \
             "\$pkgdir/usr/share/icons/hicolor/256x256/apps/tuxpulse.png"
     fi
-
-    if [[ -f packaging/systemd/tuxpulse-helper.service ]]; then
-        sed 's#/usr/bin/python3#/usr/bin/python#g' \
-            packaging/systemd/tuxpulse-helper.service > "\$srcdir/tuxpulse-helper.service"
-        install -Dm644 "\$srcdir/tuxpulse-helper.service" \
-            "\$pkgdir/usr/lib/systemd/system/tuxpulse-helper.service"
-    fi
-
-    if [[ -f packaging/polkit/com.tuxpulse.policy ]]; then
-        install -Dm644 packaging/polkit/com.tuxpulse.policy \
-            "\$pkgdir/usr/share/polkit-1/actions/com.tuxpulse.policy"
-    fi
 }
 PKGEOF
 
@@ -148,9 +132,6 @@ TuxPulse was installed successfully.
 
 Run it with:
   tuxpulse
-
-Optional helper service:
-  sudo systemctl enable --now tuxpulse-helper.service
 MSG
 }
 

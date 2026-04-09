@@ -196,14 +196,14 @@ Before publishing Arch packages, verify and update the PKGBUILD metadata (especi
 
 ## Secure execution model
 
-The repository contains:
-- `helper/`
-- `packaging/systemd/tuxpulse-helper.service`
-- `packaging/polkit/com.tuxpulse.policy`
+TuxPulse no longer uses the previous helper daemon / writable root socket model.
 
-This shows the project direction toward a helper-based privileged execution model.
+Current packaging and runtime behavior follow these rules:
+- native package operations run only through direct elevated package-manager commands
+- Flatpak operations default to user scope and do not require a privileged background daemon
+- packages must not install or enable a custom root helper service automatically
 
-At the moment, the unified package builder focuses on packaging the app itself, helper sources, desktop entry and icon. If you want DEB/RPM packages that also install and enable the helper service / polkit policy automatically, extend `build_packages.sh` accordingly.
+This removes the old privilege-escalation path exposed by the helper service and keeps privileged actions limited to the exact package-manager command being executed.
 
 ## Custom icon
 

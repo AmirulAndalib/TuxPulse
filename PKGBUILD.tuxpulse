@@ -15,10 +15,6 @@ package() {
     install -dm755 "$pkgdir/usr/share/tuxpulse"
     cp -a "$srcdir/app" "$pkgdir/usr/share/tuxpulse/"
 
-    if [[ -d "$srcdir/helper" ]]; then
-        cp -a "$srcdir/helper" "$pkgdir/usr/share/tuxpulse/"
-    fi
-
     install -Dm755 /dev/stdin "$pkgdir/usr/bin/tuxpulse" <<'LAUNCHER'
 #!/usr/bin/env bash
 export PYTHONPATH="/usr/share/tuxpulse/app"

@@ -1,4 +1,4 @@
-from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtCore import QEasingCurve, QPropertyAnimation, pyqtSignal, Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QButtonGroup,
@@ -21,6 +21,35 @@ CARD_COLOR_MAP = {
     "white": "#111827",
     "red": "#3a1212",
 }
+
+
+class SmoothScrollArea(QScrollArea):
+    def __init__(self):
+        super().__init__()
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.NoFrame)
+        self.verticalScrollBar().setSingleStep(24)
+        self._wheel_animation = QPropertyAnimation(self.verticalScrollBar(), b"value", self)
+        self._wheel_animation.setDuration(140)
+        self._wheel_animation.setEasingCurve(QEasingCurve.OutCubic)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta == 0:
+            super().wheelEvent(event)
+            return
+
+        bar = self.verticalScrollBar()
+        steps = delta / 120.0
+        distance = int(round(steps * bar.singleStep() * 3))
+        target = bar.value() - distance
+        target = max(bar.minimum(), min(bar.maximum(), target))
+
+        self._wheel_animation.stop()
+        self._wheel_animation.setStartValue(bar.value())
+        self._wheel_animation.setEndValue(target)
+        self._wheel_animation.start()
+        event.accept()
 
 
 class SelectButton(QPushButton):
@@ -312,6 +341,12 @@ class InstallerCard(QFrame):
             self.native_radio.setAutoExclusive(True)
             self.flatpak_radio.setAutoExclusive(True)
 
+        selected = bool(app.get("selected"))
+        self.check.blockSignals(True)
+        self.check.setChecked(selected)
+        self.check.blockSignals(False)
+        self.check._refresh_style()
+
         self._apply_state_label()
 
         ui = app.get("ui", {})
@@ -337,6 +372,8 @@ class InstallerTab(QWidget):
         self._card_texts = {}
         self._stats_texts = {}
         self._grouped_apps = {}
+        self._selection_state = {}
+        self._app_cache = {}
 
         layout = QVBoxLayout(self)
 
@@ -377,8 +414,7 @@ class InstallerTab(QWidget):
             """
         )
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
+        self.scroll = SmoothScrollArea()
 
         self.container = QWidget()
         self.cards_layout = QVBoxLayout(self.container)
@@ -446,52 +482,108 @@ class InstallerTab(QWidget):
 
     def populate(self, grouped_apps: dict):
         self._grouped_apps = grouped_apps or {}
+        self.container.setUpdatesEnabled(False)
+        self.scroll.viewport().setUpdatesEnabled(False)
 
-        while self.cards_layout.count() > 1:
-            item = self.cards_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        try:
+            while self.cards_layout.count() > 1:
+                item = self.cards_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
 
-        self.cards = {}
+            self.cards = {}
 
-        for category, apps in grouped_apps.items():
-            section = QLabel(category)
-            section.setObjectName("SectionTitle")
-            self.cards_layout.insertWidget(self.cards_layout.count() - 1, section)
+            for category, apps in grouped_apps.items():
+                section = QLabel(category)
+                section.setObjectName("SectionTitle")
+                self.cards_layout.insertWidget(self.cards_layout.count() - 1, section)
 
-            for app in apps:
-                card = InstallerCard(app)
-                card.set_texts(self._card_texts)
-                card.toggled.connect(self._on_card_toggled)
-                card.install_requested.connect(self.install_one_requested.emit)
-                card.remove_requested.connect(self.remove_one_requested.emit)
-                card.update_requested.connect(self.update_one_requested.emit)
-                card.source_changed.connect(self.source_changed.emit)
+                for raw_app in apps:
+                    app = dict(raw_app)
+                    app_id = app.get("id")
+                    saved = self._selection_state.get(app_id, {})
 
-                self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
-                self.cards[app["id"]] = card
+                    if saved.get("source") in {"native", "flatpak"}:
+                        app["source"] = saved["source"]
+                    if saved.get("selected"):
+                        app["selected"] = True
+
+                    if app_id:
+                        self._app_cache[app_id] = dict(app)
+
+                    card = InstallerCard(app)
+                    card.set_texts(self._card_texts)
+                    card.toggled.connect(self._on_card_toggled)
+                    card.install_requested.connect(self.install_one_requested.emit)
+                    card.remove_requested.connect(self.remove_one_requested.emit)
+                    card.update_requested.connect(self.update_one_requested.emit)
+                    card.source_changed.connect(self._on_card_source_changed)
+
+                    self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
+                    self.cards[app["id"]] = card
+        finally:
+            self.container.setUpdatesEnabled(True)
+            self.scroll.viewport().setUpdatesEnabled(True)
 
         self._refresh_stats()
-        self._refresh_update_button_label()
+        self._refresh_bulk_buttons()
 
     def _on_card_toggled(self, app_id: str, checked: bool):
-        if app_id in self.cards:
-            self.cards[app_id].app["selected"] = checked
+        card = self.cards.get(app_id)
+        if card is not None:
+            card.app["selected"] = checked
+            source = "flatpak" if card.flatpak_radio.isChecked() else "native"
+            self._selection_state[app_id] = {
+                "selected": checked,
+                "source": source,
+                "app": dict(card.app),
+            }
+            self._app_cache[app_id] = dict(card.app)
+        elif app_id in self._selection_state:
+            self._selection_state[app_id]["selected"] = checked
+
         self._refresh_stats()
-        self._refresh_update_button_label()
+        self._refresh_bulk_buttons()
+
+
+    def _on_card_source_changed(self, app_id: str, source: str):
+        card = self.cards.get(app_id)
+        if card is not None:
+            card.app["source"] = source
+            current = self._selection_state.get(app_id, {})
+            current["source"] = source
+            current["selected"] = bool(card.check.isChecked())
+            current["app"] = dict(card.app)
+            self._selection_state[app_id] = current
+            self._app_cache[app_id] = dict(card.app)
+        self.source_changed.emit(app_id, source)
+
+    def _selected_counts(self):
+        installable = 0
+        removable = 0
+        updatable = 0
+
+        for app in self.selected_apps():
+            ui = app.get("ui", {})
+            if ui.get("can_install"):
+                installable += 1
+            if ui.get("can_remove"):
+                removable += 1
+            if ui.get("can_update"):
+                updatable += 1
+
+        return installable, removable, updatable
 
     def _refresh_stats(self):
         total = len(self.cards)
         installed = 0
-        selected = 0
+        selected = sum(1 for item in self._selection_state.values() if item.get("selected"))
 
         for card in self.cards.values():
             state = card.app.get("state", "")
             if state.startswith("installed"):
                 installed += 1
-            if card.check.isChecked():
-                selected += 1
 
         not_installed = max(0, total - installed)
 
@@ -507,31 +599,33 @@ class InstallerTab(QWidget):
             f"{selected_label}: {selected}"
         )
 
+    def _set_bulk_button_state(self, button: QPushButton, base_text: str, count: int):
+        button.setEnabled(count > 0)
+        button.setText(f"{base_text} ({count})" if count > 0 else base_text)
+
+    def _refresh_bulk_buttons(self):
+        install_count, remove_count, update_count = self._selected_counts()
+        self._set_bulk_button_state(self.install_selected_btn, self.install_selected_btn.text().split(" (", 1)[0], install_count)
+        self._set_bulk_button_state(self.remove_selected_btn, self.remove_selected_btn.text().split(" (", 1)[0], remove_count)
+        self._set_bulk_button_state(self.update_selected_btn, self.update_selected_btn.text().split(" (", 1)[0], update_count)
+
     def _refresh_update_button_label(self):
-        selected = self.selected_apps()
-        count = 0
-        for app in selected:
-            if app.get("update_available"):
-                count += 1
-
-        base = self._card_texts.get("update", "Update")
-        bulk = self.update_selected_btn.text().split(" (", 1)[0]
-        if not bulk:
-            bulk = base
-
-        if count > 0:
-            self.update_selected_btn.setText(f"{bulk} ({count})")
-        else:
-            self.update_selected_btn.setText(self.update_selected_btn.text().split(" (", 1)[0])
+        self._refresh_bulk_buttons()
 
     def selected_apps(self):
         apps = []
-        for card in self.cards.values():
-            if card.check.isChecked():
-                app = dict(card.app)
-                if card.flatpak_radio.isChecked():
-                    app["source"] = "flatpak"
-                elif card.native_radio.isChecked():
-                    app["source"] = "native"
-                apps.append(app)
+        for app_id, item in self._selection_state.items():
+            if not item.get("selected"):
+                continue
+
+            app = dict(item.get("app") or self._app_cache.get(app_id) or {})
+            if not app:
+                continue
+
+            source = item.get("source")
+            if source in {"native", "flatpak"}:
+                app["source"] = source
+
+            app["selected"] = True
+            apps.append(app)
         return apps
