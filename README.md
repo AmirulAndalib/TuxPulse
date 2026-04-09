@@ -1,15 +1,19 @@
-[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 ![Followers](https://img.shields.io/github/followers/eoliann?style=plastic&color=green)
 ![Watchers](https://img.shields.io/github/watchers/eoliann/TuxPulse?style=plastic)
 ![Stars](https://img.shields.io/github/stars/eoliann/TuxPulse?style=plastic)
+
+[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue?style=plastic)](https://www.paypal.com/donate/?hosted_button_id=PTH2EXUDS423S)
 [![Donate](https://img.shields.io/badge/Donate-Revolut-8A2BE2?style=plastic)](http://revolut.me/adriannm9?style=plastic)
+
 ![Release Date](https://img.shields.io/github/release-date/eoliann/TuxPulse?style=plastic)
 ![Last Commit](https://img.shields.io/github/last-commit/eoliann/TuxPulse?style=plastic)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
+
 ![OS](https://img.shields.io/badge/OS-Linux-blue?style=plastic)
 ![Lang](https://img.shields.io/badge/Lang-Python-magenta?style=plastic)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
+
 
 # TuxPulse
 
