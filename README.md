@@ -1,15 +1,19 @@
-[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 ![Followers](https://img.shields.io/github/followers/eoliann?style=plastic&color=green)
 ![Watchers](https://img.shields.io/github/watchers/eoliann/TuxPulse?style=plastic)
 ![Stars](https://img.shields.io/github/stars/eoliann/TuxPulse?style=plastic)
+
+[![Group](https://img.shields.io/badge/Group-Telegram-blue?style=plastic)](https://t.me/tuxpulse)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue?style=plastic)](https://www.paypal.com/donate/?hosted_button_id=PTH2EXUDS423S)
 [![Donate](https://img.shields.io/badge/Donate-Revolut-8A2BE2?style=plastic)](http://revolut.me/adriannm9?style=plastic)
+
 ![Release Date](https://img.shields.io/github/release-date/eoliann/TuxPulse?style=plastic)
 ![Last Commit](https://img.shields.io/github/last-commit/eoliann/TuxPulse?style=plastic)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
+
 ![OS](https://img.shields.io/badge/OS-Linux-blue?style=plastic)
 ![Lang](https://img.shields.io/badge/Lang-Python-magenta?style=plastic)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/eoliann/TuxPulse/total?style=plastic)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=plastic)](LICENSE.md)
+
 
 # TuxPulse
 
@@ -184,26 +188,29 @@ sudo dnf install ./dist/tuxpulse-<version>-1*.noarch.rpm
 ## Arch Linux packaging note
 
 The repository already contains `packaging/arch/PKGBUILD`, which is the right starting point for Arch support.
-
-Example local build flow:
+### 1. Clone the project from GitHub
+### 2. Make the script executable
+### 3. Build + automatic installation
 
 ```bash
-cd packaging/arch
-makepkg -si
+git clone https://github.com/eoliann/TuxPulse.git
+cd TuxPulse
+chmod +x build_arch.sh
+./build_arch.sh --install
 ```
 
 Before publishing Arch packages, verify and update the PKGBUILD metadata (especially `pkgver`, dependencies and installed assets) so it matches the current application version and packaging layout.
 
 ## Secure execution model
 
-TuxPulse no longer uses the previous helper daemon / writable root socket model.
+The repository contains:
+- `helper/`
+- `packaging/systemd/tuxpulse-helper.service`
+- `packaging/polkit/com.tuxpulse.policy`
 
-Current packaging and runtime behavior follow these rules:
-- native package operations run only through direct elevated package-manager commands
-- Flatpak operations default to user scope and do not require a privileged background daemon
-- packages must not install or enable a custom root helper service automatically
+This shows the project direction toward a helper-based privileged execution model.
 
-This removes the old privilege-escalation path exposed by the helper service and keeps privileged actions limited to the exact package-manager command being executed.
+At the moment, the unified package builder focuses on packaging the app itself, helper sources, desktop entry and icon. If you want DEB/RPM packages that also install and enable the helper service / polkit policy automatically, extend `build_packages.sh` accordingly.
 
 ## Custom icon
 
