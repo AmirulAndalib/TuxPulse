@@ -197,16 +197,41 @@ chmod +x build_arch.sh
 
 Before publishing Arch packages, verify and update the PKGBUILD metadata (especially `pkgver`, dependencies and installed assets) so it matches the current application version and packaging layout.
 
-## Secure execution model
+## Secure execution model (updated April 2026)
 
-The repository contains:
-- `helper/`
-- `packaging/systemd/tuxpulse-helper.service`
-- `packaging/polkit/com.tuxpulse.policy`
+TuxPulse uses a **privileged helper** (`tuxpulse-helper.service`) to perform administrative actions (package management, system cleanup, kernel removal, etc.) without requiring the main GUI to run as root.
 
-This shows the project direction toward a helper-based privileged execution model.
+### How it works now (secure design):
+- The helper runs as `root` via systemd.
+- Communication happens through a Unix socket protected with permissions **0600** (only root can access it).
+- All privileged actions from the GUI are executed via **`pkexec`** + a strict Polkit policy (`com.tuxpulse.policy`).
+- The helper only accepts a **whitelisted set of commands** (no arbitrary shell execution).
+- Socket is **not world-writable** anymore (fixed the previous security issue).
 
-At the moment, the unified package builder focuses on packaging the app itself, helper sources, desktop entry and icon. If you want DEB/RPM packages that also install and enable the helper service / polkit policy automatically, extend `build_packages.sh` accordingly.
+### What gets installed:
+When you install the `.deb` package:
+- The main application
+- The privileged helper (`/usr/share/tuxpulse/helper/`)
+- The systemd service (`tuxpulse-helper.service`)
+- The Polkit policy
+
+The service is **started** at install time, but **not enabled** for auto-start at boot (you can enable it manually if you need background/scheduled tasks).
+
+**Important**: Administrative actions will show a Polkit authentication dialog (password prompt) — this is intentional and secure.
+
+---
+
+### Previous security issue (acknowledged)
+An earlier version of the helper used a world-writable socket (`0666`) and accepted commands without proper privilege checking.  
+This has been **completely fixed** in the current codebase.  
+We thank the security researcher who reported it publicly.
+
+If you installed an older version, we strongly recommend uninstalling it and installing the latest build or run:
+
+```bash
+sudo systemctl disable --now tuxpulse-helper.service
+sudo rm -f /run/tuxpulse.sock
+```
 
 ## Custom icon
 
